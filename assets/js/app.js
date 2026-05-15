@@ -2302,13 +2302,19 @@ If the visitor's question is well-served by an existing entry, point them there.
    ============================================================ */
 
 function setupSearch() {
-  const form = document.getElementById("searchForm");
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const q = document.getElementById("searchInput").value.trim();
-    if (!q) return;
-    await handleSearch(q);
-  });
+  // bind every .search form on the page (galaxy HUD + planet HUD)
+  for (const form of document.querySelectorAll("form.search")) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = form.querySelector(".search-input");
+      const q = input.value.trim();
+      if (!q) return;
+      input.value = "";
+      // clear sibling inputs too so the next visible bar starts clean
+      document.querySelectorAll(".search-input").forEach(el => { el.value = ""; });
+      await handleSearch(q);
+    });
+  }
   document.getElementById("generationCancel").addEventListener("click", () => {
     state.generatingNow = false;
     document.getElementById("generation-overlay").hidden = true;
@@ -2319,7 +2325,6 @@ async function handleSearch(query) {
   const hit = findLocalMatch(query);
   if (hit) {
     navigateToHit(hit);
-    document.getElementById("searchInput").value = "";
     return;
   }
   if (!state.guideKey) {
@@ -2394,7 +2399,6 @@ async function generateAndAddEntity(query) {
   try {
     const result = await callClaudeForGeneration(query);
     if (!state.generatingNow) return;
-    document.getElementById("searchInput").value = "";
 
     if (result.parent) {
       // new moon under existing parent
