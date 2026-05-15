@@ -755,14 +755,39 @@ function populateMoonHud(moon, parent) {
   document.getElementById("planetDocCount").textContent = `${moon.documents.length} entries`;
   document.getElementById("planetConnCount").textContent = `parent: ${parent.name}`;
 
+  renderTagButtons(moon.tags || []);
+}
+
+// Render tags at the bottom of the planet/moon panel as clickable buttons.
+// Click → navigate to matching topic/moon, or generate a new entry via Opus.
+function renderTagButtons(tagList) {
   const tags = document.getElementById("planetTags");
   tags.innerHTML = "";
-  for (const tag of (moon.tags || [])) {
-    const span = document.createElement("span");
-    span.className = "planet-tag";
-    span.textContent = tag;
-    tags.appendChild(span);
+  for (const tag of tagList) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "planet-tag";
+    btn.textContent = tag;
+    btn.title = `explore "${tag}"`;
+    btn.addEventListener("click", () => handleTagClick(tag));
+    tags.appendChild(btn);
   }
+}
+
+async function handleTagClick(tagText) {
+  const hit = findLocalMatch(tagText);
+  const curId = currentEntry()?.id;
+  if (hit && hit.id !== curId) {
+    navigateToHit(hit);
+    return;
+  }
+  // either no match, or the only match is the entry we're already on — generate a fresh entry
+  if (!state.guideKey) {
+    toast(`Connect AI Guide to explore "${tagText}"`);
+    openGuide();
+    return;
+  }
+  await generateAndAddEntity(tagText);
 }
 
 function updateBackButton() {
@@ -984,14 +1009,7 @@ function populatePlanetHud(topic) {
   document.getElementById("planetDocCount").textContent = `${topic.documents.length} entries`;
   document.getElementById("planetConnCount").textContent = `${connectionsOf(topic.id).length} links`;
 
-  const tags = document.getElementById("planetTags");
-  tags.innerHTML = "";
-  for (const tag of topic.tags) {
-    const span = document.createElement("span");
-    span.className = "planet-tag";
-    span.textContent = tag;
-    tags.appendChild(span);
-  }
+  renderTagButtons(topic.tags || []);
 }
 
 /* ============================================================

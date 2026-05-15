@@ -199,6 +199,15 @@ em { color: var(--ink-0); font-style: italic; }
   color: var(--ink-2);
   padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.planet-tag:hover {
+  color: var(--ink-0);
+  border-color: var(--accent);
+  background: rgba(167,139,250,0.10);
+  transform: translateY(-1px);
 }
 
 /* ============================================================
