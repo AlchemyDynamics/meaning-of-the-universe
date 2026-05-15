@@ -1185,7 +1185,7 @@ const TTS = {
   // unified selection: "browser:<voiceURI>" or "elevenlabs:<voiceId>"
   engine: "browser",
   // playback state
-  rate: parseFloat(localStorage.getItem("motu.tts.rate") || "1.0"),
+  rate: parseFloat(localStorage.getItem("motu.tts.rate") || "1.10"),
   pitch: parseFloat(localStorage.getItem("motu.tts.pitch") || "1.0"),
   queue: [],
   index: 0,
@@ -1386,10 +1386,9 @@ function applyVoiceSelection(value) {
   }
 }
 
-// Show/hide setting rows that only apply to one engine.
+// Reserved for future engine-specific UI toggles. Pitch is now wired to both engines.
 function updateSettingsVisibility() {
-  const pitchRow = document.getElementById("pitchRange")?.closest(".setting-row");
-  if (pitchRow) pitchRow.hidden = (TTS.engine === "elevenlabs");
+  // pitch is now applied to both engines — leave row visible
 }
 
 /* split a long text into utterance-sized chunks (paragraphs / sentences) */
@@ -1576,7 +1575,14 @@ function playElevenPart(index) {
     return;
   }
   const a = new Audio(url);
-  a.playbackRate = TTS.rate;   // approximate; pitch isn't applicable here
+  // Pitch on pre-rendered audio: disable the browser's pitch-preservation so
+  // playbackRate genuinely modulates pitch as well. We bake pitch into rate as
+  // (speed * pitch) — pitch and speed are then slightly coupled, which is the
+  // honest trade-off for pitch-shifting MP3 without a full phase vocoder.
+  a.preservesPitch = false;
+  a.mozPreservesPitch = false;
+  a.webkitPreservesPitch = false;
+  a.playbackRate = Math.max(0.5, Math.min(2.0, TTS.rate * TTS.pitch));
   TTS.audio = a;
   a.addEventListener("ended", () => {
     URL.revokeObjectURL(url);
@@ -1708,10 +1714,11 @@ async function elSaveKey() {
     TTS.elVoices = voices;
     localStorage.setItem("motu.tts.elKey", key);
     populateVoiceSelect();
-    // auto-pick the first voice as default for new connections
+    // first-connection default: prefer Lily, then Rachel, else the first available
     const sel = document.getElementById("voiceSelect");
-    if (TTS.elVoices.length > 0) {
-      sel.value = `elevenlabs:${TTS.elVoices[0].voice_id}`;
+    const preferred = pickPreferredElVoice();
+    if (preferred) {
+      sel.value = `elevenlabs:${preferred.voice_id}`;
       applyVoiceSelection(sel.value);
     }
     document.getElementById("elKeyRow").hidden = true;
@@ -1753,6 +1760,17 @@ function elDisconnect() {
     applyVoiceSelection(sel.value);
   }
   toast("ElevenLabs disconnected");
+}
+
+// Default preference order for an EL voice when no persisted selection applies.
+function pickPreferredElVoice() {
+  if (!TTS.elVoices.length) return null;
+  const order = ["lily", "rachel", "charlotte", "bella", "domi"];
+  for (const name of order) {
+    const hit = TTS.elVoices.find(v => v.name.toLowerCase() === name);
+    if (hit) return hit;
+  }
+  return TTS.elVoices[0];
 }
 
 async function elRestoreConnected() {
@@ -1885,6 +1903,10 @@ function setupSettingsPanel() {
     TTS.rate = parseFloat(e.target.value);
     document.getElementById("rateValue").textContent = `${TTS.rate.toFixed(2)}×`;
     localStorage.setItem("motu.tts.rate", String(TTS.rate));
+    // live update if currently playing
+    if (TTS.audio && TTS.engine === "elevenlabs") {
+      TTS.audio.playbackRate = Math.max(0.5, Math.min(2.0, TTS.rate * TTS.pitch));
+    }
   });
   // pitch
   const pitch = document.getElementById("pitchRange");
@@ -1894,6 +1916,10 @@ function setupSettingsPanel() {
     TTS.pitch = parseFloat(e.target.value);
     document.getElementById("pitchValue").textContent = TTS.pitch.toFixed(2);
     localStorage.setItem("motu.tts.pitch", String(TTS.pitch));
+    // live update if currently playing
+    if (TTS.audio && TTS.engine === "elevenlabs") {
+      TTS.audio.playbackRate = Math.max(0.5, Math.min(2.0, TTS.rate * TTS.pitch));
+    }
   });
   // preview & reset
   document.getElementById("previewVoice").addEventListener("click", ttsPreview);
