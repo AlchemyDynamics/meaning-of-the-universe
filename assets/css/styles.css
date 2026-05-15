@@ -441,6 +441,27 @@ em { color: var(--ink-0); font-style: italic; }
   font-family: var(--mono); font-size: 9px; color: var(--ink-3); letter-spacing: 0.06em;
 }
 
+.el-row { padding-top: 18px; border-top: 1px solid var(--line); }
+.el-row .setting-label { color: var(--accent-3); }
+.el-row .setting-value { color: var(--ink-2); font-size: 10px; }
+.el-row #elKey { width: 100%; }
+
+.el-model-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.el-model-opt {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 12px; border-radius: 8px;
+  background: rgba(167,139,250,0.04);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.el-model-opt:hover { border-color: var(--line-2); background: rgba(167,139,250,0.08); }
+.el-model-opt input { display: none; }
+.el-model-opt span { font-family: var(--sans); font-size: 13px; color: var(--ink-0); }
+.el-model-opt em { font-family: var(--mono); font-size: 9px; color: var(--ink-3); letter-spacing: 0.06em; font-style: normal; }
+.el-model-opt:has(input:checked) { border-color: var(--accent); background: rgba(167,139,250,0.14); }
+.el-model-opt:has(input:checked) span { color: var(--ink-0); }
+
 .setting-actions { display: flex; gap: 10px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .setting-btn {
   padding: 8px 18px; border-radius: 999px;

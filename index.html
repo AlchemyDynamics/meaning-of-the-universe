@@ -181,6 +181,36 @@
           <div class="setting-hint" id="voiceHint">browser-native voice · no API key needed</div>
         </div>
 
+        <div class="setting-row el-row">
+          <label class="setting-label">elevenlabs (premium)
+            <span class="setting-value" id="elQuota"></span>
+          </label>
+          <div id="elDisconnected">
+            <button class="setting-btn" id="elConnect">connect elevenlabs</button>
+            <p class="dim" style="margin-top:8px;">Get a free key at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a> · free tier ≈10K chars/month</p>
+          </div>
+          <div id="elKeyRow" hidden>
+            <input id="elKey" class="guide-key" type="password" placeholder="sk_… (stored locally)" autocomplete="off" spellcheck="false" />
+            <div style="display:flex;gap:6px;margin-top:8px;">
+              <button class="setting-btn" id="elKeySave">save & load voices</button>
+              <button class="setting-btn ghost" id="elKeyCancel">cancel</button>
+            </div>
+          </div>
+          <div id="elConnected" hidden>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <span class="setting-hint" id="elStatus">✦ connected</span>
+              <button class="setting-btn ghost" id="elDisconnect">disconnect</button>
+            </div>
+            <div style="margin-top:14px;">
+              <div class="setting-label" style="font-size:9px;margin-bottom:6px;">model</div>
+              <div class="el-model-toggle">
+                <label class="el-model-opt"><input type="radio" name="elModel" value="eleven_turbo_v2_5" /><span>Turbo v2.5</span><em>fast · cheaper</em></label>
+                <label class="el-model-opt"><input type="radio" name="elModel" value="eleven_multilingual_v2" /><span>Multilingual v2</span><em>highest quality</em></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="setting-row">
           <label class="setting-label" for="rateRange">reading speed
             <span class="setting-value" id="rateValue">1.00×</span>
