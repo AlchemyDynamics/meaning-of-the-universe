@@ -2250,7 +2250,7 @@ function navigateToHit(hit) {
 }
 
 async function generateAndAddEntity(query) {
-  showGenerationOverlay(`searching for "${query}"`, "consulting the AI Guide…");
+  showGenerationOverlay(`searching for "${query}"`, "Consulting The Librarian");
   state.generatingNow = true;
   try {
     const result = await callClaudeForGeneration(query);
@@ -2262,7 +2262,7 @@ async function generateAndAddEntity(query) {
       result.entity.parentId = result.parent;
       registerGeneratedMoon(result.entity);
       persistMoon(result.entity);
-      showGenerationOverlay(`a new moon: ${result.entity.name}`, "arriving…");
+      showGenerationOverlay(`Navigating to ${result.entity.name}`, "arriving at a new moon…");
       setTimeout(() => {
         hideGenerationOverlay();
         if (state.currentTopic?.id === result.parent) {
@@ -2296,7 +2296,7 @@ async function generateAndAddEntity(query) {
       document.getElementById("topicCount").textContent = TOPICS.length;
       const docCount = TOPICS.reduce((a, t) => a + (t.documents?.length || 0), 0);
       document.getElementById("docCount").textContent = docCount;
-      showGenerationOverlay(`a new star: ${topic.name}`, "warping in…");
+      showGenerationOverlay(`Navigating to ${topic.name}`, "warping toward a new star…");
       setTimeout(() => {
         hideGenerationOverlay();
         if (state.mode === "planet" || state.mode === "moon") returnToGalaxy();
