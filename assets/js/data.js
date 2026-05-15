@@ -1234,3 +1234,12 @@ export function registerGeneratedMoon(moon) {
   if (!SUB_TOPICS[moon.parentId]) SUB_TOPICS[moon.parentId] = [];
   SUB_TOPICS[moon.parentId].push(moon);
 }
+
+export function registerGeneratedEdge(a, b) {
+  // dedupe — don't add reverse or duplicate
+  for (const [x, y] of EDGES) {
+    if ((x === a && y === b) || (x === b && y === a)) return false;
+  }
+  EDGES.push([a, b]);
+  return true;
+}

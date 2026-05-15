@@ -15,7 +15,7 @@ import {
   TOPICS, EDGES, CLUSTERS, SUB_TOPICS,
   topicById, connectionsOf,
   subTopicsOf, subTopicById, resolveById, allSearchable,
-  registerGeneratedTopic, registerGeneratedMoon,
+  registerGeneratedTopic, registerGeneratedMoon, registerGeneratedEdge,
 } from "./data.js";
 
 /* ============================================================
@@ -1782,13 +1782,23 @@ async function elRestoreConnected() {
   document.getElementById("elConnected").hidden = false;
   document.querySelectorAll("input[name='elModel']").forEach(r => r.checked = (r.value === TTS.elModel));
   populateVoiceSelect();
-  // restore unified selection if it was an EL voice and that voice still exists
+
+  const userPicked = localStorage.getItem("motu.tts.userPickedVoice") === "true";
   const prev = localStorage.getItem("motu.tts.unifiedKey") || "";
-  if (prev) {
-    const sel = document.getElementById("voiceSelect");
+  const sel = document.getElementById("voiceSelect");
+
+  if (userPicked && prev) {
+    // honor the user's explicit selection
     sel.value = prev;
     if (sel.value === prev) applyVoiceSelection(prev);
     else { sel.selectedIndex = 0; applyVoiceSelection(sel.value); }
+  } else {
+    // no explicit pick recorded — always default to the project's representative voice (Lily)
+    const pref = pickPreferredElVoice();
+    if (pref) {
+      sel.value = `elevenlabs:${pref.voice_id}`;
+      applyVoiceSelection(sel.value);
+    }
   }
   await refreshElQuota();
 }
@@ -1866,6 +1876,8 @@ function setupSettingsPanel() {
   });
   // unified voice picker — handles both browser and elevenlabs entries
   document.getElementById("voiceSelect").addEventListener("change", (e) => {
+    // mark as an explicit user choice so future auto-defaults don't override it
+    localStorage.setItem("motu.tts.userPickedVoice", "true");
     applyVoiceSelection(e.target.value);
   });
 
@@ -2200,22 +2212,29 @@ async function handleSearch(query) {
 
 function findLocalMatch(query) {
   const q = query.toLowerCase().trim();
+  if (!q) return null;
   const qSlug = q.replace(/\s+/g, "-");
+  const qWords = wordsOf(q);
   const items = allSearchable();
   let best = null, bestScore = 0;
   for (const item of items) {
     const name = item.name.toLowerCase();
     const id = item.id.toLowerCase();
+    const nameWords = wordsOf(name);
     let score = 0;
     if (id === q || id === qSlug || name === q) score = 100;
-    else if (name.includes(q) || q.includes(name)) score = 70;
-    else if (id.includes(qSlug)) score = 65;
-    else if ((item.tags || []).some(t => t.toLowerCase() === q)) score = 60;
-    else if (name.split(/\s+/).some(w => w === q)) score = 55;
-    else if ((item.tags || []).some(t => t.toLowerCase().includes(q))) score = 35;
+    else if ((item.tags || []).some(t => t.toLowerCase() === q)) score = 80;
+    // word-overlap with stemmed plurals — "world religion" matches "World Religions"
+    // but "physics" does NOT match "astrophysics" (different stems entirely)
+    else if (qWords.length > 0 && qWords.every(qw => nameWords.includes(qw))) score = 70;
     if (score > bestScore) { best = item; bestScore = score; }
   }
-  return bestScore >= 50 ? best : null;
+  return bestScore >= 70 ? best : null;
+}
+
+function wordsOf(s) {
+  const stem = (w) => w.replace(/(ies|es|s)$/i, "");
+  return s.toLowerCase().split(/[\s\-_]+/).filter(Boolean).map(stem);
 }
 
 function navigateToHit(hit) {
@@ -2296,11 +2315,21 @@ async function generateAndAddEntity(query) {
       document.getElementById("topicCount").textContent = TOPICS.length;
       const docCount = TOPICS.reduce((a, t) => a + (t.documents?.length || 0), 0);
       document.getElementById("docCount").textContent = docCount;
+      hideGenerationOverlay();
+
+      // bring the user back to galaxy if they're on a planet, so the new star is visible
+      if (state.mode === "planet" || state.mode === "moon") returnToGalaxy();
+
+      // give the camera a beat to settle before opening the review modal
+      await new Promise(r => setTimeout(r, 600));
+      await reviewConnections(topic, result.entity.connections || []);
+      // brief moment so user can see the new edges form
+      await new Promise(r => setTimeout(r, 700));
+
       showGenerationOverlay(`Navigating to ${topic.name}`, "warping toward a new star…");
       setTimeout(() => {
         hideGenerationOverlay();
-        if (state.mode === "planet" || state.mode === "moon") returnToGalaxy();
-        setTimeout(() => enterPlanet(topic.id), state.mode === "galaxy" ? 100 : 800);
+        setTimeout(() => enterPlanet(topic.id), 100);
       }, 900);
     }
   } catch (err) {
@@ -2359,6 +2388,7 @@ Reply ONLY with valid JSON in this exact shape — no markdown fences, no prose:
       {"type":"p","text":"closing honest distillation"}
     ],
     "planetTheme": {"type":"theme-name","params":{"hue":0.0,"accent":0.0,"density":1.0}},
+    "connections": ["topic-id","topic-id"],
     "documents": [
       {
         "id":"slug",
@@ -2373,6 +2403,9 @@ Reply ONLY with valid JSON in this exact shape — no markdown fences, no prose:
     ]
   }
 }
+
+CRITICAL — CONNECTIONS:
+For new TOP-LEVEL topics (parent = null), you MUST include a "connections" array with 2-4 ids of existing top-level topics this new topic genuinely connects to. Choose topics with real intellectual adjacency, not superficial keyword overlap. Empty array is acceptable only if the topic is truly isolated, which should be very rare. Moons (parent != null) do not need a "connections" array.
 
 Make it substantive, intellectually serious, calibrated. Match the library's tone: distillation-focused, neither breathless nor dismissive. Two documents. 3-4 paragraphs each in prose.`;
 }
@@ -2479,6 +2512,113 @@ function addTopicNode(topic) {
   tick();
 }
 
+function persistEdge(a, b) {
+  try {
+    const arr = JSON.parse(localStorage.getItem("motu.userEdges") || "[]");
+    arr.push([a, b]);
+    localStorage.setItem("motu.userEdges", JSON.stringify(arr));
+  } catch (e) { /* non-fatal */ }
+}
+function loadPersistedEdges() {
+  try {
+    const arr = JSON.parse(localStorage.getItem("motu.userEdges") || "[]");
+    for (const [a, b] of arr) registerGeneratedEdge(a, b);
+  } catch (e) { /* non-fatal */ }
+}
+
+function rebuildEdges() {
+  if (state.edgeLines) {
+    state.scene.remove(state.edgeLines);
+    state.edgeLines.geometry.dispose();
+    state.edgeLines.material.dispose();
+    state.edgeLines = null;
+  }
+  buildEdges();
+  if (state.mode !== "galaxy") state.edgeLines.visible = false;
+  else state.edgeLines.visible = state.edgesVisible;
+}
+
+/* ============================================================
+   Connection review — runs after Claude generates a new top-level
+   topic. User confirms which adjacencies to commit before warp.
+   ============================================================ */
+function reviewConnections(topic, suggestedIds) {
+  return new Promise((resolve) => {
+    const validSuggested = (suggestedIds || [])
+      .filter(id => topicById(id) && id !== topic.id);
+    const suggestedSet = new Set(validSuggested);
+
+    document.getElementById("connReviewTitle").textContent = topic.name;
+    const list = document.getElementById("connChecklist");
+    list.innerHTML = "";
+
+    // ordering: suggested first, then the rest alphabetically
+    const others = TOPICS.filter(t => t.id !== topic.id && !suggestedSet.has(t.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const ordered = [...validSuggested.map(topicById), ...others];
+
+    const updateCount = () => {
+      const checked = list.querySelectorAll("input[type='checkbox']:checked").length;
+      document.getElementById("connReviewCount").textContent = checked;
+      document.getElementById("connReviewPlural").textContent = checked === 1 ? "" : "s";
+    };
+
+    for (const other of ordered) {
+      const row = document.createElement("label");
+      row.className = "conn-check-row" + (suggestedSet.has(other.id) ? " suggested" : "");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = other.id;
+      cb.checked = suggestedSet.has(other.id);
+      cb.addEventListener("change", updateCount);
+      const dot = document.createElement("span");
+      dot.className = "conn-check-dot";
+      dot.style.background = other.color;
+      dot.style.color = other.color;
+      const name = document.createElement("span");
+      name.className = "conn-check-name";
+      name.textContent = other.name;
+      row.appendChild(cb);
+      row.appendChild(dot);
+      row.appendChild(name);
+      if (suggestedSet.has(other.id)) {
+        const tag = document.createElement("span");
+        tag.className = "conn-check-suggested";
+        tag.textContent = "suggested";
+        row.appendChild(tag);
+      }
+      list.appendChild(row);
+    }
+    updateCount();
+
+    const finish = (commitEdges) => {
+      if (commitEdges) {
+        const checked = [...list.querySelectorAll("input[type='checkbox']:checked")];
+        for (const cb of checked) {
+          if (registerGeneratedEdge(topic.id, cb.value)) {
+            persistEdge(topic.id, cb.value);
+          }
+        }
+        rebuildEdges();
+      }
+      document.getElementById("modal-conn-review").hidden = true;
+      // detach handlers to keep them one-shot
+      confirmBtn.removeEventListener("click", onConfirm);
+      skipBtn.removeEventListener("click", onSkip);
+      resolve();
+    };
+    const onConfirm = () => finish(true);
+    const onSkip = () => finish(false);
+
+    const confirmBtn = document.getElementById("connReviewConfirm");
+    const skipBtn = document.getElementById("connReviewSkip");
+    confirmBtn.addEventListener("click", onConfirm);
+    skipBtn.addEventListener("click", onSkip);
+
+    document.getElementById("modal-conn-review").hidden = false;
+  });
+}
+
 function persistTopic(topic) {
   try {
     const arr = JSON.parse(localStorage.getItem("motu.userTopics") || "[]");
@@ -2500,6 +2640,7 @@ function loadPersistedEntities() {
     const moons = JSON.parse(localStorage.getItem("motu.userMoons") || "[]");
     for (const m of moons) registerGeneratedMoon(m);
   } catch (e) { /* corrupted localStorage — non-fatal */ }
+  loadPersistedEdges();
 }
 
 async function callClaude(userText) {
