@@ -60,7 +60,7 @@ window.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => {
     document.getElementById("boot").classList.add("fade");
     setTimeout(() => document.getElementById("boot").remove(), 1400);
-  }, 700);
+  }, 4000);
   document.getElementById("topicCount").textContent = TOPICS.length;
   document.getElementById("docCount").textContent = TOPICS.reduce((a, t) => a + t.documents.length, 0);
 });
