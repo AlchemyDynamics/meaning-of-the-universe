@@ -65,6 +65,9 @@ window.addEventListener("DOMContentLoaded", () => {
   buildEdges();
   buildPlanet();
   attachUI();
+  initTTS();
+  setupSettingsPanel();
+  bindTTSButtons();
   startLoop();
   setTimeout(() => {
     document.getElementById("boot").classList.add("fade");
@@ -1047,9 +1050,18 @@ function openDocuments(entry) {
 }
 
 function renderDocument(doc) {
+  // any previous reading should stop when switching docs
+  stopSpeech();
   const reader = document.getElementById("docReader");
   reader.innerHTML = `
-    <h4>${escapeHtml(doc.title)}</h4>
+    <div class="doc-head-row">
+      <h4>${escapeHtml(doc.title)}</h4>
+      <button class="tts-btn" data-tts-doc title="Read aloud">
+        <svg class="tts-icon-play" viewBox="0 0 24 24" width="14" height="14"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+        <svg class="tts-icon-stop" viewBox="0 0 24 24" width="14" height="14" hidden><path d="M6 6h12v12H6z" fill="currentColor"/></svg>
+        <span class="tts-label">listen</span>
+      </button>
+    </div>
     <div class="doc-meta">${escapeHtml(doc.author)} · ${escapeHtml(doc.type)}</div>
     <div class="doc-summary">${escapeHtml(doc.summary)}</div>
     <div class="doc-findings">
@@ -1059,6 +1071,14 @@ function renderDocument(doc) {
     <div class="doc-prose">${doc.prose.map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div>
   `;
   reader.scrollTop = 0;
+  // wire the dynamically-rendered button
+  const btn = reader.querySelector("[data-tts-doc]");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      if (btn.classList.contains("playing")) { stopSpeech(); return; }
+      startSpeech(entryToReadable(doc, "document"), btn);
+    });
+  }
 }
 
 function openConnections(entry) {
@@ -1123,6 +1143,7 @@ function mkConnCard(entity, sub) {
 }
 
 function closeAllModals() {
+  stopSpeech();
   document.querySelectorAll(".modal").forEach(m => m.hidden = true);
 }
 
@@ -1137,6 +1158,287 @@ function escapeHtml(s) {
    ============================================================ */
 function currentEntry() {
   return state.currentMoon || state.currentTopic;
+}
+
+/* ============================================================
+   Text-to-speech
+   ------------------------------------------------------------
+   Uses the browser's Web Speech API — no API key required.
+   Voices are paragraph-chunked into a queue to (a) sidestep
+   Chrome's 15-second per-utterance bug and (b) allow stop/skip.
+   Settings persist in localStorage.
+   ============================================================ */
+
+const TTS = {
+  voices: [],
+  selected: null,
+  rate: parseFloat(localStorage.getItem("motu.tts.rate") || "1.0"),
+  pitch: parseFloat(localStorage.getItem("motu.tts.pitch") || "1.0"),
+  queue: [],
+  index: 0,
+  playing: false,
+  currentBtn: null,
+  keepAliveTimer: null,
+};
+
+function initTTS() {
+  if (!("speechSynthesis" in window)) {
+    document.getElementById("voiceHint").textContent = "Your browser does not support speech synthesis.";
+    document.querySelectorAll(".tts-btn").forEach(b => b.style.display = "none");
+    return;
+  }
+  loadVoices();
+  // voices load asynchronously on most browsers
+  speechSynthesis.onvoiceschanged = () => loadVoices();
+  // chrome keep-alive: prevents the silent dropout after ~15s
+  TTS.keepAliveTimer = setInterval(() => {
+    if (speechSynthesis.speaking && !speechSynthesis.paused) {
+      speechSynthesis.pause();
+      speechSynthesis.resume();
+    }
+  }, 10000);
+}
+
+function loadVoices() {
+  const raw = speechSynthesis.getVoices();
+  // English only — the library is in English
+  const en = raw.filter(v => v.lang && v.lang.toLowerCase().startsWith("en"));
+  // dedupe by voiceURI
+  const seen = new Set();
+  TTS.voices = [];
+  for (const v of en) {
+    if (seen.has(v.voiceURI)) continue;
+    seen.add(v.voiceURI);
+    TTS.voices.push({ voice: v, score: scoreVoice(v), label: prettyVoice(v) });
+  }
+  TTS.voices.sort((a, b) => b.score - a.score);
+
+  // pick preferred: persisted, else first warm-female if found, else first
+  const persistedURI = localStorage.getItem("motu.tts.voiceURI");
+  let pick = TTS.voices.find(v => v.voice.voiceURI === persistedURI);
+  if (!pick) {
+    const warmRx = /aria|jenny|sonia|ava|samantha|libby|olivia|moira/i;
+    pick = TTS.voices.find(v => warmRx.test(v.voice.name));
+  }
+  if (!pick && TTS.voices.length) pick = TTS.voices[0];
+  TTS.selected = pick?.voice || null;
+
+  populateVoiceSelect();
+}
+
+function scoreVoice(v) {
+  const n = v.name.toLowerCase();
+  let s = 0;
+  if (/neural|online/.test(n)) s += 100;
+  if (/premium/.test(n)) s += 80;
+  if (/enhanced|natural/.test(n)) s += 60;
+  if (/(microsoft|apple|google)/.test(n)) s += 20;
+  if (v.localService === false) s += 30;
+  // known-warm narrator voices
+  if (/aria|jenny|sonia|ava|samantha|libby|olivia|moira/i.test(n)) s += 50;
+  // mild bonus for variety of accents
+  if (v.lang === "en-US") s += 5;
+  if (v.lang === "en-GB") s += 4;
+  if (v.lang === "en-AU") s += 3;
+  return s;
+}
+
+function prettyVoice(v) {
+  // strip the "Microsoft" / "Google" prefixes for cleanliness; keep accent + tag
+  let name = v.name
+    .replace(/^Microsoft\s+/i, "")
+    .replace(/^Google\s+/i, "")
+    .replace(/\s+Online\s+\(Natural\)\s*-\s*/i, " · ")
+    .replace(/\s+\(.*?\)\s*-\s*/i, " · ");
+  // accent tag
+  const accent = ({ "en-US": "US", "en-GB": "UK", "en-AU": "AU", "en-CA": "CA", "en-IN": "IN", "en-IE": "IE", "en-NZ": "NZ", "en-ZA": "ZA" })[v.lang] || v.lang;
+  return `${name} (${accent})`;
+}
+
+function qualityStars(score) {
+  if (score >= 150) return "★★★";
+  if (score >= 70) return "★★";
+  if (score >= 30) return "★";
+  return "·";
+}
+
+function populateVoiceSelect() {
+  const sel = document.getElementById("voiceSelect");
+  if (!sel) return;
+  sel.innerHTML = "";
+  if (TTS.voices.length === 0) {
+    const opt = document.createElement("option");
+    opt.textContent = "no voices available";
+    sel.appendChild(opt);
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  for (const v of TTS.voices) {
+    const opt = document.createElement("option");
+    opt.value = v.voice.voiceURI;
+    opt.textContent = `${qualityStars(v.score)}  ${v.label}`;
+    if (v.voice === TTS.selected) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+/* split a long text into utterance-sized chunks (paragraphs / sentences) */
+function chunkForSpeech(text) {
+  // split on paragraph breaks first, then long paragraphs into sentences
+  const paras = text.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+  const chunks = [];
+  for (const p of paras) {
+    if (p.length <= 240) { chunks.push(p); continue; }
+    // sentence split — keep terminators
+    const sents = p.match(/[^.!?]+[.!?]+["')\]]?\s*/g) || [p];
+    let buf = "";
+    for (const s of sents) {
+      if ((buf + s).length > 240 && buf) { chunks.push(buf.trim()); buf = s; }
+      else buf += s;
+    }
+    if (buf.trim()) chunks.push(buf.trim());
+  }
+  return chunks;
+}
+
+function entryToReadable(entry, kind) {
+  // kind: "conclusion" | "document"
+  if (kind === "conclusion") {
+    const parts = [];
+    parts.push(`${entry.name}.`);
+    parts.push(`Distilled conclusion. ${entry.conclusion || entry.summary || ""}`);
+    for (const node of (entry.conclusionBody || [])) {
+      if (node.type === "p") parts.push(node.text);
+      else if (node.type === "h4") parts.push(node.text + ".");
+      else if (node.type === "ul") {
+        for (const item of node.items) parts.push(item);
+      }
+    }
+    return parts.join("\n\n");
+  }
+  if (kind === "document") {
+    const doc = entry;
+    const parts = [];
+    parts.push(`${doc.title}.`);
+    parts.push(`Summary. ${doc.summary || ""}`);
+    if (doc.findings?.length) {
+      parts.push("Key findings.");
+      for (const f of doc.findings) parts.push(f);
+    }
+    if (doc.prose?.length) {
+      for (const p of doc.prose) parts.push(p);
+    }
+    return parts.join("\n\n");
+  }
+  return "";
+}
+
+function startSpeech(text, btn) {
+  if (!("speechSynthesis" in window) || !TTS.selected) return;
+  stopSpeech();
+  const chunks = chunkForSpeech(text);
+  TTS.queue = chunks.map(c => {
+    const u = new SpeechSynthesisUtterance(c);
+    u.voice = TTS.selected;
+    u.rate = TTS.rate;
+    u.pitch = TTS.pitch;
+    u.volume = 1.0;
+    return u;
+  });
+  TTS.index = 0;
+  TTS.playing = true;
+  TTS.currentBtn = btn;
+  if (btn) btn.classList.add("playing");
+  playNextChunk();
+}
+
+function playNextChunk() {
+  if (!TTS.playing) return;
+  if (TTS.index >= TTS.queue.length) {
+    stopSpeech();
+    return;
+  }
+  const u = TTS.queue[TTS.index++];
+  u.onend = () => playNextChunk();
+  u.onerror = () => playNextChunk();
+  speechSynthesis.speak(u);
+}
+
+function stopSpeech() {
+  TTS.playing = false;
+  TTS.queue = [];
+  TTS.index = 0;
+  speechSynthesis.cancel();
+  if (TTS.currentBtn) TTS.currentBtn.classList.remove("playing");
+  TTS.currentBtn = null;
+}
+
+function ttsPreview() {
+  startSpeech(
+    "The library is open. Begin where curiosity invites you, and the rest will arrange itself.",
+    document.getElementById("previewVoice")
+  );
+}
+
+function bindTTSButtons() {
+  document.querySelectorAll(".tts-btn[data-tts-source]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const source = btn.dataset.ttsSource;
+      // toggle off if already playing this button
+      if (btn.classList.contains("playing")) { stopSpeech(); return; }
+      const entry = currentEntry();
+      if (!entry) return;
+      if (source === "conclusion") startSpeech(entryToReadable(entry, "conclusion"), btn);
+    });
+  });
+}
+
+function setupSettingsPanel() {
+  // open
+  document.getElementById("btn-settings").addEventListener("click", () => {
+    document.getElementById("modal-settings").hidden = false;
+  });
+  // voice
+  document.getElementById("voiceSelect").addEventListener("change", (e) => {
+    const uri = e.target.value;
+    const pick = TTS.voices.find(v => v.voice.voiceURI === uri);
+    if (pick) {
+      TTS.selected = pick.voice;
+      localStorage.setItem("motu.tts.voiceURI", uri);
+    }
+  });
+  // rate
+  const rate = document.getElementById("rateRange");
+  rate.value = TTS.rate;
+  document.getElementById("rateValue").textContent = `${TTS.rate.toFixed(2)}×`;
+  rate.addEventListener("input", (e) => {
+    TTS.rate = parseFloat(e.target.value);
+    document.getElementById("rateValue").textContent = `${TTS.rate.toFixed(2)}×`;
+    localStorage.setItem("motu.tts.rate", String(TTS.rate));
+  });
+  // pitch
+  const pitch = document.getElementById("pitchRange");
+  pitch.value = TTS.pitch;
+  document.getElementById("pitchValue").textContent = TTS.pitch.toFixed(2);
+  pitch.addEventListener("input", (e) => {
+    TTS.pitch = parseFloat(e.target.value);
+    document.getElementById("pitchValue").textContent = TTS.pitch.toFixed(2);
+    localStorage.setItem("motu.tts.pitch", String(TTS.pitch));
+  });
+  // preview & reset
+  document.getElementById("previewVoice").addEventListener("click", ttsPreview);
+  document.getElementById("resetVoice").addEventListener("click", () => {
+    TTS.rate = 1.0; TTS.pitch = 1.0;
+    localStorage.removeItem("motu.tts.rate");
+    localStorage.removeItem("motu.tts.pitch");
+    localStorage.removeItem("motu.tts.voiceURI");
+    rate.value = 1.0; pitch.value = 1.0;
+    document.getElementById("rateValue").textContent = "1.00×";
+    document.getElementById("pitchValue").textContent = "1.00";
+    // reload voices and reselect default
+    loadVoices();
+  });
 }
 
 function attachUI() {
