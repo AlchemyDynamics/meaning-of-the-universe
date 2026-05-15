@@ -1183,20 +1183,20 @@ const TTS = {
 
 function initTTS() {
   if (!("speechSynthesis" in window)) {
-    document.getElementById("voiceHint").textContent = "Your browser does not support speech synthesis.";
+    const hint = document.getElementById("voiceHint");
+    if (hint) hint.textContent = "Your browser does not support speech synthesis.";
     document.querySelectorAll(".tts-btn").forEach(b => b.style.display = "none");
     return;
   }
   loadVoices();
-  // voices load asynchronously on most browsers
-  speechSynthesis.onvoiceschanged = () => loadVoices();
-  // chrome keep-alive: prevents the silent dropout after ~15s
-  TTS.keepAliveTimer = setInterval(() => {
-    if (speechSynthesis.speaking && !speechSynthesis.paused) {
-      speechSynthesis.pause();
-      speechSynthesis.resume();
-    }
-  }, 10000);
+  speechSynthesis.addEventListener("voiceschanged", loadVoices);
+  // Chrome sometimes never fires voiceschanged — poll up to ~3s
+  let polls = 0;
+  const poll = setInterval(() => {
+    polls++;
+    if (TTS.voices.length > 0 || polls > 30) { clearInterval(poll); return; }
+    loadVoices();
+  }, 100);
 }
 
 function loadVoices() {
@@ -1224,6 +1224,15 @@ function loadVoices() {
   TTS.selected = pick?.voice || null;
 
   populateVoiceSelect();
+  // update hint with current state — helps when nothing seems to be working
+  const hint = document.getElementById("voiceHint");
+  if (hint) {
+    if (TTS.voices.length === 0) {
+      hint.textContent = "no voices detected yet · they often arrive after first click";
+    } else {
+      hint.textContent = `${TTS.voices.length} voices available · current: ${TTS.selected?.name || "browser default"}`;
+    }
+  }
 }
 
 function scoreVoice(v) {
@@ -1335,21 +1344,32 @@ function entryToReadable(entry, kind) {
 }
 
 function startSpeech(text, btn) {
-  if (!("speechSynthesis" in window) || !TTS.selected) return;
+  if (!("speechSynthesis" in window)) {
+    toast("speech synthesis not supported in this browser");
+    return;
+  }
+  // late-load voices in case they weren't ready at init
+  if (TTS.voices.length === 0) loadVoices();
   stopSpeech();
   const chunks = chunkForSpeech(text);
+  if (chunks.length === 0) return;
   TTS.queue = chunks.map(c => {
     const u = new SpeechSynthesisUtterance(c);
-    u.voice = TTS.selected;
+    if (TTS.selected) u.voice = TTS.selected;   // else: use browser default
     u.rate = TTS.rate;
     u.pitch = TTS.pitch;
     u.volume = 1.0;
+    u.lang = TTS.selected?.lang || "en-US";
     return u;
   });
   TTS.index = 0;
   TTS.playing = true;
   TTS.currentBtn = btn;
   if (btn) btn.classList.add("playing");
+  // tell the user which voice is active (helps when nothing seems to happen)
+  if (!TTS.selected) {
+    console.warn("[TTS] No voice selected — using browser default");
+  }
   playNextChunk();
 }
 
