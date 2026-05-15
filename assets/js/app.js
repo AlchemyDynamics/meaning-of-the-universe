@@ -11,7 +11,12 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 
-import { TOPICS, EDGES, CLUSTERS, topicById, connectionsOf } from "./data.js";
+import {
+  TOPICS, EDGES, CLUSTERS, SUB_TOPICS,
+  topicById, connectionsOf,
+  subTopicsOf, subTopicById, resolveById, allSearchable,
+  registerGeneratedTopic, registerGeneratedMoon,
+} from "./data.js";
 
 /* ============================================================
    Globals
@@ -25,9 +30,12 @@ const state = {
   raycaster: new THREE.Raycaster(),
   pointer: new THREE.Vector2(-2, -2),
   hovered: null,            // topic id
-  mode: "galaxy",           // "galaxy" | "transit" | "planet"
+  mode: "galaxy",           // "galaxy" | "transit" | "planet" | "moon"
   currentTopic: null,       // topic object when in planet mode
+  currentMoon: null,        // moon object when in moon mode
   topicMeshes: new Map(),   // id -> mesh
+  moonMeshes: [],           // [{ id, group, mesh, orbit, hoverHalo }]
+  generatingNow: false,
   edgeLines: null,
   starfield: null,
   planetMesh: null,
@@ -50,6 +58,7 @@ window.__motu = state; // debug handle
    ============================================================ */
 window.addEventListener("DOMContentLoaded", () => {
   setBootStatus("constructing the starfield…");
+  loadPersistedEntities();
   initScene();
   buildStarfield();
   buildTopicNodes();
@@ -140,8 +149,12 @@ function onPointerMove(e) {
 }
 
 function onPointerClick() {
-  if (state.mode !== "galaxy") return;
-  if (state.hovered) enterPlanet(state.hovered);
+  if (state.mode === "galaxy") {
+    if (state.hovered) enterPlanet(state.hovered);
+  } else if (state.mode === "planet" && state.hoveredMoon) {
+    const rec = state.moonMeshes.find(m => m.id === state.hoveredMoon);
+    if (rec) enterMoon(rec);
+  }
 }
 
 /* ============================================================
@@ -585,6 +598,183 @@ function setPlanetTheme(topic) {
 }
 
 /* ============================================================
+   Moons (sub-topics) — built when entering a planet
+   ============================================================ */
+function buildMoons(topic) {
+  disposeMoons();
+  const moons = subTopicsOf(topic.id);
+  for (const sub of moons) {
+    const group = new THREE.Group();
+    const color = new THREE.Color(sub.color || topic.color);
+    const size = sub.size ?? 0.45;
+
+    // moon body — same shader, smaller
+    const geo = new THREE.SphereGeometry(size, 48, 48);
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: planetVertex,
+      fragmentShader: planetFragment,
+      uniforms: {
+        uTime: { value: 0 },
+        uTheme: { value: THEME_INDEX[sub.planetTheme?.type] ?? 0 },
+        uHue: { value: sub.planetTheme?.params?.hue ?? 0.7 },
+        uAccent: { value: sub.planetTheme?.params?.accent ?? 0.95 },
+        uParamA: {
+          value: sub.planetTheme?.params?.bands ?? sub.planetTheme?.params?.complexity
+              ?? sub.planetTheme?.params?.density ?? sub.planetTheme?.params?.facets
+              ?? sub.planetTheme?.params?.turbulence ?? sub.planetTheme?.params?.glitch
+              ?? sub.planetTheme?.params?.structure ?? 6.0
+        },
+      },
+    });
+    const body = new THREE.Mesh(geo, mat);
+
+    // halo
+    const haloMat = new THREE.SpriteMaterial({
+      map: makeGlowTexture(color),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const halo = new THREE.Sprite(haloMat);
+    halo.scale.set(size * 4, size * 4, 1);
+
+    group.add(body, halo);
+
+    // orbit trail (faint ring tilted at orbit.tilt)
+    const orbit = sub.orbit || { radius: 7, speed: 0.15, phase: 0, tilt: 0 };
+    const trailGeo = new THREE.RingGeometry(orbit.radius - 0.01, orbit.radius + 0.01, 128);
+    const trailMat = new THREE.MeshBasicMaterial({
+      color: color, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    const trail = new THREE.Mesh(trailGeo, trailMat);
+    trail.rotation.x = Math.PI / 2;
+    trail.rotation.z = orbit.tilt || 0;
+    state.planetGroup.add(trail);
+
+    state.scene.add(group);
+    state.moonMeshes.push({
+      id: sub.id,
+      sub,
+      group,
+      body,
+      halo,
+      trail,
+      mat,
+      orbit,
+      paused: false,
+      size,
+      color,
+    });
+  }
+}
+
+function disposeMoons() {
+  for (const m of state.moonMeshes) {
+    state.scene.remove(m.group);
+    state.planetGroup.remove(m.trail);
+    m.body.geometry.dispose(); m.body.material.dispose();
+    m.trail.geometry.dispose(); m.trail.material.dispose();
+    m.halo.material.map?.dispose(); m.halo.material.dispose();
+  }
+  state.moonMeshes.length = 0;
+}
+
+function updateMoonPositions(t) {
+  for (const m of state.moonMeshes) {
+    if (m.paused) continue;
+    const a = t * m.orbit.speed + (m.orbit.phase || 0);
+    const r = m.orbit.radius;
+    const tilt = m.orbit.tilt || 0;
+    m.group.position.set(
+      r * Math.cos(a),
+      Math.sin(a) * r * tilt,
+      r * Math.sin(a)
+    );
+    m.mat.uniforms.uTime.value = t;
+    m.body.rotation.y += 0.005;
+  }
+}
+
+/* ============================================================
+   Moon mode — selecting a moon focuses on it
+   ============================================================ */
+function enterMoon(moonRecord) {
+  const m = moonRecord;
+  m.paused = true;
+  state.currentMoon = m.sub;
+  state.mode = "transit";
+  state.afterTransit = "moon";
+
+  // camera target: a position near the moon, with the planet in the background
+  const moonPos = m.group.position.clone();
+  const fromOrigin = moonPos.clone().normalize();
+  const cameraOffset = fromOrigin.multiplyScalar(2.0).add(new THREE.Vector3(0, 0.6, 0));
+  state.cameraTargetPos = moonPos.clone().add(cameraOffset);
+  state.cameraTargetLook = moonPos.clone();
+  state.controls.minDistance = 1.5;
+  state.controls.maxDistance = 14;
+
+  // boost moon glow while focused
+  m.halo.scale.set(m.size * 6, m.size * 6, 1);
+
+  populateMoonHud(m.sub, state.currentTopic);
+  updateBackButton();
+  updateGuideContext(`moon — ${m.sub.name}`);
+}
+
+function returnToPlanet() {
+  // unfocus moon; resume orbits
+  for (const m of state.moonMeshes) {
+    m.paused = false;
+    m.halo.scale.set(m.size * 4, m.size * 4, 1);
+  }
+  state.currentMoon = null;
+
+  // re-center on planet
+  const dir = new THREE.Vector3(1, 0.3, 1.6).normalize();
+  state.cameraTargetPos = dir.multiplyScalar(11);
+  state.cameraTargetLook = new THREE.Vector3(0, 0, 0);
+  state.mode = "transit";
+  state.afterTransit = "planet";
+  state.controls.minDistance = 6;
+  state.controls.maxDistance = 22;
+
+  populatePlanetHud(state.currentTopic);
+  updateBackButton();
+  updateGuideContext(`planet — ${state.currentTopic.name}`);
+}
+
+function populateMoonHud(moon, parent) {
+  document.getElementById("planetCluster").textContent = `moon of ${parent.name}`;
+  document.getElementById("planetTitle").textContent = moon.name;
+  document.getElementById("planetSummary").textContent = moon.summary;
+  document.getElementById("planetDocCount").textContent = `${moon.documents.length} entries`;
+  document.getElementById("planetConnCount").textContent = `parent: ${parent.name}`;
+
+  const tags = document.getElementById("planetTags");
+  tags.innerHTML = "";
+  for (const tag of (moon.tags || [])) {
+    const span = document.createElement("span");
+    span.className = "planet-tag";
+    span.textContent = tag;
+    tags.appendChild(span);
+  }
+}
+
+function updateBackButton() {
+  const btn = document.getElementById("btn-return-galaxy");
+  const label = btn.querySelector("span");
+  if (state.mode === "moon" || state.currentMoon) {
+    label.textContent = `back to ${state.currentTopic.name}`;
+    btn.dataset.action = "to-planet";
+  } else {
+    label.textContent = "return to galaxy";
+    btn.dataset.action = "to-galaxy";
+  }
+}
+
+/* ============================================================
    Loop
    ============================================================ */
 function startLoop() {
@@ -608,11 +798,13 @@ function startLoop() {
 
     // hover
     if (state.mode === "galaxy") doHoverPick();
+    else if (state.mode === "planet" || state.mode === "moon") doHoverPickMoons();
 
     // planet rotation & shader time
     if (state.planetGroup.visible) {
       state.planetGroup.rotation.y += dt * 0.08;
       state.planetMesh.material.uniforms.uTime.value = t;
+      updateMoonPositions(t);
     }
 
     // camera transit
@@ -624,8 +816,9 @@ function startLoop() {
       if (state.camera.position.distanceTo(state.cameraTargetPos) < 0.5) {
         state.mode = state.afterTransit;
         state.cameraTargetPos = null;
-        if (state.afterTransit === "planet") onArriveAtPlanet();
-        else if (state.afterTransit === "galaxy") onArriveAtGalaxy();
+        if (state.afterTransit === "planet") { state.mode = "planet"; onArriveAtPlanet(); }
+        else if (state.afterTransit === "galaxy") { state.mode = "galaxy"; onArriveAtGalaxy(); }
+        else if (state.afterTransit === "moon") { state.mode = "moon"; }
       }
     }
 
@@ -638,6 +831,43 @@ function startLoop() {
 /* ============================================================
    Hover picking
    ============================================================ */
+function doHoverPickMoons() {
+  if (state.moonMeshes.length === 0) {
+    if (state.hoveredMoon) {
+      state.hoveredMoon = null;
+      document.getElementById("tooltip").hidden = true;
+      document.body.style.cursor = "";
+    }
+    return;
+  }
+  state.raycaster.setFromCamera(state.pointer, state.camera);
+  const targets = state.moonMeshes.map(m => m.body);
+  const hits = state.raycaster.intersectObjects(targets, false);
+  const tooltip = document.getElementById("tooltip");
+
+  if (hits.length > 0) {
+    const body = hits[0].object;
+    const rec = state.moonMeshes.find(m => m.body === body);
+    if (!rec) return;
+    if (rec.id !== state.hoveredMoon) {
+      state.hoveredMoon = rec.id;
+      tooltip.innerHTML = `${rec.sub.name}<span class="tt-sub">moon · ${rec.sub.documents.length} documents</span>`;
+      tooltip.hidden = false;
+      document.body.style.cursor = "pointer";
+    }
+    if (state.pointerScreen) {
+      tooltip.style.left = `${state.pointerScreen.x}px`;
+      tooltip.style.top = `${state.pointerScreen.y}px`;
+    }
+  } else {
+    if (state.hoveredMoon) {
+      state.hoveredMoon = null;
+      tooltip.hidden = true;
+      document.body.style.cursor = "";
+    }
+  }
+}
+
 function doHoverPick() {
   state.raycaster.setFromCamera(state.pointer, state.camera);
   const targets = [];
@@ -710,13 +940,19 @@ function enterPlanet(id) {
   document.getElementById("hud-planet").hidden = false;
   document.getElementById("tooltip").hidden = true;
   state.hovered = null;
+  state.hoveredMoon = null;
 
+  // build orbiting moons (if any)
+  buildMoons(topic);
+
+  updateBackButton();
   updateGuideContext(`planet — ${topic.name}`);
 }
 
 function onArriveAtPlanet() { /* hook */ }
 
 function returnToGalaxy() {
+  disposeMoons();
   state.planetGroup.visible = false;
   state.cameraTargetPos = state.savedCam.pos.clone();
   state.cameraTargetLook = state.savedCam.look.clone();
@@ -729,6 +965,7 @@ function returnToGalaxy() {
   state.topicGroup.visible = true;
   state.edgeLines.visible = state.edgesVisible;
   state.currentTopic = null;
+  state.currentMoon = null;
   updateGuideContext("galactic view");
 }
 
@@ -757,12 +994,12 @@ function populatePlanetHud(topic) {
 /* ============================================================
    Modals
    ============================================================ */
-function openConclusion(topic) {
-  document.getElementById("conclusionTitle").textContent = topic.name;
-  document.getElementById("conclusionLead").textContent = topic.conclusion;
+function openConclusion(entry) {
+  document.getElementById("conclusionTitle").textContent = entry.name;
+  document.getElementById("conclusionLead").textContent = entry.conclusion || entry.summary || "";
   const body = document.getElementById("conclusionBody");
   body.innerHTML = "";
-  for (const node of topic.conclusionBody) {
+  for (const node of (entry.conclusionBody || [])) {
     if (node.type === "p") {
       const p = document.createElement("p");
       p.textContent = node.text;
@@ -784,11 +1021,11 @@ function openConclusion(topic) {
   document.getElementById("modal-conclusion").hidden = false;
 }
 
-function openDocuments(topic) {
-  document.getElementById("docsTitle").textContent = topic.name;
+function openDocuments(entry) {
+  document.getElementById("docsTitle").textContent = entry.name;
   const list = document.getElementById("docList");
   list.innerHTML = "";
-  topic.documents.forEach((doc, idx) => {
+  (entry.documents || []).forEach((doc, idx) => {
     const li = document.createElement("li");
     li.innerHTML = `
       <span class="doc-type">${doc.type}</span>
@@ -824,24 +1061,65 @@ function renderDocument(doc) {
   reader.scrollTop = 0;
 }
 
-function openConnections(topic) {
-  document.getElementById("connTitle").textContent = topic.name;
+function openConnections(entry) {
+  document.getElementById("connTitle").textContent = entry.name;
   const grid = document.getElementById("connGrid");
   grid.innerHTML = "";
-  for (const c of connectionsOf(topic.id)) {
-    const card = document.createElement("button");
-    card.className = "conn-card";
-    card.innerHTML = `<span class="conn-name">${c.name}</span><span class="conn-cluster">${c.cluster}</span>`;
-    card.style.borderLeft = `3px solid ${c.color}`;
-    card.addEventListener("click", () => {
-      closeAllModals();
-      // smooth re-navigation from one planet to another
-      state.planetGroup.visible = false;
-      setTimeout(() => enterPlanet(c.id), 50);
-    });
-    grid.appendChild(card);
+
+  // moon: connections = parent + sibling moons
+  if (entry.parentId) {
+    const parent = topicById(entry.parentId);
+    if (parent) {
+      const card = mkConnCard(parent, "parent topic");
+      card.addEventListener("click", () => {
+        closeAllModals();
+        // exit moon mode, stay on planet
+        if (state.currentMoon) returnToPlanet();
+      });
+      grid.appendChild(card);
+    }
+    for (const sib of subTopicsOf(entry.parentId)) {
+      if (sib.id === entry.id) continue;
+      const card = mkConnCard(sib, "sibling moon");
+      card.addEventListener("click", () => {
+        closeAllModals();
+        const rec = state.moonMeshes.find(m => m.id === sib.id);
+        if (rec) enterMoon(rec);
+      });
+      grid.appendChild(card);
+    }
+  } else {
+    // top-level topic: galactic edges
+    for (const c of connectionsOf(entry.id)) {
+      const card = mkConnCard(c, c.cluster);
+      card.addEventListener("click", () => {
+        closeAllModals();
+        state.planetGroup.visible = false;
+        setTimeout(() => enterPlanet(c.id), 50);
+      });
+      grid.appendChild(card);
+    }
+    // also list own moons as "satellites"
+    for (const sub of subTopicsOf(entry.id)) {
+      const card = mkConnCard(sub, "satellite moon");
+      card.addEventListener("click", () => {
+        closeAllModals();
+        const rec = state.moonMeshes.find(m => m.id === sub.id);
+        if (rec) enterMoon(rec);
+      });
+      grid.appendChild(card);
+    }
   }
+
   document.getElementById("modal-connections").hidden = false;
+}
+
+function mkConnCard(entity, sub) {
+  const card = document.createElement("button");
+  card.className = "conn-card";
+  card.innerHTML = `<span class="conn-name">${escapeHtml(entity.name)}</span><span class="conn-cluster">${escapeHtml(sub)}</span>`;
+  card.style.borderLeft = `3px solid ${entity.color || "#a78bfa"}`;
+  return card;
 }
 
 function closeAllModals() {
@@ -857,8 +1135,16 @@ function escapeHtml(s) {
 /* ============================================================
    UI wiring
    ============================================================ */
+function currentEntry() {
+  return state.currentMoon || state.currentTopic;
+}
+
 function attachUI() {
-  document.getElementById("btn-return-galaxy").addEventListener("click", returnToGalaxy);
+  document.getElementById("btn-return-galaxy").addEventListener("click", () => {
+    // dynamic: in moon → planet; in planet → galaxy
+    if (state.currentMoon) returnToPlanet();
+    else returnToGalaxy();
+  });
   document.getElementById("btn-about").addEventListener("click", () => document.getElementById("modal-about").hidden = false);
   document.getElementById("btn-reset-view").addEventListener("click", () => {
     state.cameraTargetPos = new THREE.Vector3(0, 6, 36);
@@ -871,14 +1157,15 @@ function attachUI() {
     state.edgeLines.visible = state.edgesVisible && state.mode === "galaxy";
   });
 
-  // planet menu
+  // planet menu — pass either topic or focused moon
   document.querySelectorAll(".menu-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       const action = btn.dataset.action;
-      if (!state.currentTopic) return;
-      if (action === "conclusion") openConclusion(state.currentTopic);
-      else if (action === "documents") openDocuments(state.currentTopic);
-      else if (action === "connections") openConnections(state.currentTopic);
+      const entry = currentEntry();
+      if (!entry) return;
+      if (action === "conclusion") openConclusion(entry);
+      else if (action === "documents") openDocuments(entry);
+      else if (action === "connections") openConnections(entry);
       else if (action === "ask-guide") openGuide();
     });
   });
@@ -924,6 +1211,9 @@ function attachUI() {
   // initialize guide-key visibility
   if (state.guideKey) document.getElementById("guideKeyRow").classList.add("hidden");
   else document.getElementById("guideKeyRow").classList.remove("hidden");
+
+  // search
+  setupSearch();
 }
 
 function toast(msg) {
@@ -968,8 +1258,15 @@ function addGuideMessage(role, content, opts = {}) {
     btn.textContent = `→ navigate to ${opts.navName ?? opts.navId}`;
     btn.addEventListener("click", () => {
       closeGuide();
-      if (state.mode === "planet") returnToGalaxy();
-      setTimeout(() => enterPlanet(opts.navId), 600);
+      const r = resolveById(opts.navId);
+      if (!r) return;
+      setTimeout(() => {
+        if (r.kind === "topic") {
+          navigateToHit({ id: r.entry.id, kind: "topic", name: r.entry.name });
+        } else {
+          navigateToHit({ id: r.entry.id, kind: "moon", name: r.entry.name, parentId: r.parent.id });
+        }
+      }, 200);
     });
     c.appendChild(btn);
   }
@@ -1034,32 +1331,379 @@ function matchNavIntent(text) {
   const t = text.toLowerCase();
   const triggers = /(take me|go to|navigate|warp|jump|show|open)/i;
   if (!triggers.test(text)) return null;
-  // find any topic name or keyword
-  for (const topic of TOPICS) {
-    if (t.includes(topic.name.toLowerCase())) return topic;
-    if (t.includes(topic.id)) return topic;
+  for (const item of allSearchable()) {
+    if (t.includes(item.name.toLowerCase()) || t.includes(item.id)) return item.ref;
   }
-  // also tag-based
-  for (const topic of TOPICS) {
-    for (const tag of topic.tags) {
-      if (t.includes(tag.toLowerCase())) return topic;
+  for (const item of allSearchable()) {
+    for (const tag of (item.tags || [])) {
+      if (t.includes(tag.toLowerCase())) return item.ref;
     }
   }
   return null;
 }
 
 function detectReplyNav(reply) {
-  // look for an explicit cue we'll ask Claude to use: [[navigate:id]]
-  const m = reply.match(/\[\[navigate:([a-z-]+)\]\]/i);
-  if (m) return topicById(m[1]);
-  return null;
+  const m = reply.match(/\[\[navigate:([a-z0-9-]+)\]\]/i);
+  if (!m) return null;
+  const r = resolveById(m[1]);
+  return r ? r.entry : null;
 }
 
-const GUIDE_SYSTEM = `You are the AI Guide of "The Meaning of the Universe", a 3D research library organized as a galaxy. You help visitors navigate, summarize, and decide what to read next. Keep replies short (2-5 sentences), warm, and substantive. Quote sparingly. When you recommend the user visit a specific topic in the library, append a navigation cue on its own line in this exact form: [[navigate:topic-id]] — the front-end will turn that into a clickable warp button. Topic ids are:
+function buildGuideSystem() {
+  const topicLines = TOPICS.map(t => `- ${t.id} — ${t.name}: ${t.summary}`).join("\n");
+  const moonLines = Object.entries(SUB_TOPICS)
+    .flatMap(([p, arr]) => arr.map(s => `  · ${s.id} (moon of ${p}) — ${s.name}: ${s.summary}`))
+    .join("\n");
+  return `You are the AI Guide of "The Meaning of the Universe", a 3D research library organized as a galaxy. You help visitors navigate, summarize, and decide what to read next. Keep replies short (2-5 sentences), warm, and substantive. Quote sparingly.
 
-` + TOPICS.map(t => `- ${t.id} — ${t.name}: ${t.summary}`).join("\n") + `
+When you recommend the user visit a specific topic or moon in the library, append a navigation cue on its own line: [[navigate:id]] — the front-end will turn that into a clickable warp button.
 
-Speak as a steward of a serious library, not a hype merchant. If a question is outside the library's scope, say so plainly and suggest the closest adjacent topic.`;
+TOP-LEVEL TOPICS (stars):
+${topicLines}
+
+MOONS (orbit a parent star, accessible from inside that star):
+${moonLines}
+
+If the visitor's question is well-served by an existing entry, point them there. If it's outside the library's catalogue, say so plainly and mention they can use the search bar in the galaxy view — it will generate a new entry on the fly. Speak as a steward of a serious library, not a hype merchant.`;
+}
+/* Rebuilt at call time so the guide sees user-generated entries created during the session. */
+
+/* ============================================================
+   Search & AI generation
+   ============================================================ */
+
+function setupSearch() {
+  const form = document.getElementById("searchForm");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const q = document.getElementById("searchInput").value.trim();
+    if (!q) return;
+    await handleSearch(q);
+  });
+  document.getElementById("generationCancel").addEventListener("click", () => {
+    state.generatingNow = false;
+    document.getElementById("generation-overlay").hidden = true;
+  });
+}
+
+async function handleSearch(query) {
+  const hit = findLocalMatch(query);
+  if (hit) {
+    navigateToHit(hit);
+    document.getElementById("searchInput").value = "";
+    return;
+  }
+  if (!state.guideKey) {
+    toast("No match found — connect the AI Guide to generate new topics");
+    openGuide();
+    return;
+  }
+  await generateAndAddEntity(query);
+}
+
+function findLocalMatch(query) {
+  const q = query.toLowerCase().trim();
+  const qSlug = q.replace(/\s+/g, "-");
+  const items = allSearchable();
+  let best = null, bestScore = 0;
+  for (const item of items) {
+    const name = item.name.toLowerCase();
+    const id = item.id.toLowerCase();
+    let score = 0;
+    if (id === q || id === qSlug || name === q) score = 100;
+    else if (name.includes(q) || q.includes(name)) score = 70;
+    else if (id.includes(qSlug)) score = 65;
+    else if ((item.tags || []).some(t => t.toLowerCase() === q)) score = 60;
+    else if (name.split(/\s+/).some(w => w === q)) score = 55;
+    else if ((item.tags || []).some(t => t.toLowerCase().includes(q))) score = 35;
+    if (score > bestScore) { best = item; bestScore = score; }
+  }
+  return bestScore >= 50 ? best : null;
+}
+
+function navigateToHit(hit) {
+  const goMoon = () => setTimeout(() => {
+    const rec = state.moonMeshes.find(m => m.id === hit.id);
+    if (rec) enterMoon(rec);
+  }, 1400);
+
+  if (hit.kind === "topic") {
+    if (state.mode === "planet" || state.mode === "moon") {
+      returnToGalaxy();
+      setTimeout(() => enterPlanet(hit.id), 700);
+    } else {
+      enterPlanet(hit.id);
+    }
+  } else if (hit.kind === "moon") {
+    if (state.currentTopic?.id === hit.parentId) {
+      if (state.currentMoon) returnToPlanet();
+      setTimeout(() => {
+        const rec = state.moonMeshes.find(m => m.id === hit.id);
+        if (rec) enterMoon(rec);
+      }, 200);
+    } else if (state.mode === "planet" || state.mode === "moon") {
+      returnToGalaxy();
+      setTimeout(() => { enterPlanet(hit.parentId); goMoon(); }, 700);
+    } else {
+      enterPlanet(hit.parentId);
+      goMoon();
+    }
+  }
+  toast(`→ ${hit.name}`);
+}
+
+async function generateAndAddEntity(query) {
+  showGenerationOverlay(`searching for "${query}"`, "consulting the AI Guide…");
+  state.generatingNow = true;
+  try {
+    const result = await callClaudeForGeneration(query);
+    if (!state.generatingNow) return;
+    document.getElementById("searchInput").value = "";
+
+    if (result.parent) {
+      // new moon under existing parent
+      result.entity.parentId = result.parent;
+      registerGeneratedMoon(result.entity);
+      persistMoon(result.entity);
+      showGenerationOverlay(`a new moon: ${result.entity.name}`, "arriving…");
+      setTimeout(() => {
+        hideGenerationOverlay();
+        if (state.currentTopic?.id === result.parent) {
+          if (state.currentMoon) returnToPlanet();
+          setTimeout(() => {
+            buildMoons(state.currentTopic);
+            setTimeout(() => {
+              const rec = state.moonMeshes.find(m => m.id === result.entity.id);
+              if (rec) enterMoon(rec);
+            }, 100);
+          }, 200);
+        } else {
+          if (state.mode === "planet" || state.mode === "moon") returnToGalaxy();
+          setTimeout(() => {
+            enterPlanet(result.parent);
+            setTimeout(() => {
+              const rec = state.moonMeshes.find(m => m.id === result.entity.id);
+              if (rec) enterMoon(rec);
+            }, 1500);
+          }, state.mode === "galaxy" ? 0 : 700);
+        }
+      }, 900);
+    } else {
+      // new top-level topic
+      const topic = result.entity;
+      topic.position = findEmptyPosition();
+      topic.size = topic.size || 0.9;
+      registerGeneratedTopic(topic);
+      persistTopic(topic);
+      addTopicNode(topic);
+      document.getElementById("topicCount").textContent = TOPICS.length;
+      const docCount = TOPICS.reduce((a, t) => a + (t.documents?.length || 0), 0);
+      document.getElementById("docCount").textContent = docCount;
+      showGenerationOverlay(`a new star: ${topic.name}`, "warping in…");
+      setTimeout(() => {
+        hideGenerationOverlay();
+        if (state.mode === "planet" || state.mode === "moon") returnToGalaxy();
+        setTimeout(() => enterPlanet(topic.id), state.mode === "galaxy" ? 100 : 800);
+      }, 900);
+    }
+  } catch (err) {
+    hideGenerationOverlay();
+    addGuideMessage("bot", `Generation failed: *${escapeHtml(err.message?.slice(0,140) || "unknown")}*\n\nThe model may have produced malformed JSON. Try a slightly different phrasing, or open the guide and ask there.`);
+    openGuide();
+  } finally {
+    state.generatingNow = false;
+  }
+}
+
+function showGenerationOverlay(title, sub) {
+  document.getElementById("generationTitle").textContent = title;
+  document.getElementById("generationSub").textContent = sub;
+  document.getElementById("generation-overlay").hidden = false;
+}
+function hideGenerationOverlay() {
+  document.getElementById("generation-overlay").hidden = true;
+}
+
+function buildGenerationSystem() {
+  return `You expand a 3D research library called "The Meaning of the Universe". A visitor has searched for a topic that does not yet exist in the library. Generate one substantive new entry.
+
+The library is organized at top level by clusters: metaphysics, physical, systems, humanity. Each top-level topic is a star. Stars may have orbiting moons (sub-topics).
+
+EXISTING TOP-LEVEL TOPICS — use one of these ids as "parent" if the query is plausibly a sub-topic of it:
+${TOPICS.map(t => `- ${t.id} — ${t.name}: ${t.summary}`).join("\n")}
+
+EXISTING MOONS (do not regenerate — pick a new angle if the user query is too close):
+${Object.entries(SUB_TOPICS).flatMap(([p, arr]) => arr.map(s => `- ${s.id} (moon of ${p})`)).join("\n")}
+
+Decide:
+(A) Query is clearly a sub-topic of one existing star → set "parent" to that star's id.
+(B) Query is a new top-level area → set "parent" to null.
+
+Available planet themes: grid (cyan wireframe), plasma (orange flares), mandala (gold sacred geometry), flow (green currents), crystal (purple faceted), gas (banded gas giant), cmb (cosmic web), circuit (electric).
+
+Reply ONLY with valid JSON in this exact shape — no markdown fences, no prose:
+
+{
+  "parent": "existing-id-or-null",
+  "entity": {
+    "id": "kebab-case-id",
+    "name": "Display Name",
+    "color": "#hexcolor",
+    "cluster": "metaphysics|physical|systems|humanity",
+    "tags": ["tag1","tag2","tag3","tag4"],
+    "summary": "one-sentence summary",
+    "conclusion": "one-line distillation that is itself substantive",
+    "conclusionBody": [
+      {"type":"p","text":"opening paragraph framing the topic"},
+      {"type":"h4","text":"what the field accepts"},
+      {"type":"ul","items":["claim 1","claim 2","claim 3"]},
+      {"type":"h4","text":"what is contested"},
+      {"type":"ul","items":["open 1","open 2"]},
+      {"type":"p","text":"closing honest distillation"}
+    ],
+    "planetTheme": {"type":"theme-name","params":{"hue":0.0,"accent":0.0,"density":1.0}},
+    "documents": [
+      {
+        "id":"slug",
+        "type":"survey|foundational|frontier|theoretical|historical|empirical|philosophical",
+        "title":"Document Title",
+        "author":"synthesis · 2026",
+        "summary":"1-2 sentences",
+        "findings":["finding","finding","finding"],
+        "prose":["paragraph one","paragraph two","paragraph three","paragraph four"]
+      },
+      {"id":"slug2","type":"...","title":"...","author":"...","summary":"...","findings":["..."],"prose":["...","...","..."]}
+    ]
+  }
+}
+
+Make it substantive, intellectually serious, calibrated. Match the library's tone: distillation-focused, neither breathless nor dismissive. Two documents. 3-4 paragraphs each in prose.`;
+}
+
+async function callClaudeForGeneration(query) {
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": state.guideKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8000,
+      system: buildGenerationSystem(),
+      messages: [{ role: "user", content: `Search query: "${query}"\n\nGenerate the JSON now.` }],
+    }),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`API ${resp.status}: ${txt.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  let text = (data.content || []).map(b => b.text).join("\n").trim();
+  text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  // robustness: extract the first {...} block
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+  if (first >= 0 && last > first) text = text.slice(first, last + 1);
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch (e) { throw new Error("AI returned malformed JSON"); }
+  if (!parsed.entity?.id || !parsed.entity?.name) throw new Error("AI returned incomplete entry");
+  if (parsed.parent && !topicById(parsed.parent)) parsed.parent = null;
+  if (parsed.parent && !parsed.entity.orbit) {
+    parsed.entity.orbit = {
+      radius: 7 + Math.random() * 3,
+      speed: 0.10 + Math.random() * 0.10,
+      phase: Math.random() * Math.PI * 2,
+      tilt: (Math.random() - 0.5) * 0.4,
+    };
+  }
+  return parsed;
+}
+
+function findEmptyPosition() {
+  let best = null, bestMinDist = -Infinity;
+  for (let i = 0; i < 60; i++) {
+    const r = 12 + Math.random() * 6;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const p = [
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.sin(phi) * Math.sin(theta) * 0.7,
+      r * Math.cos(phi),
+    ];
+    let minD = Infinity;
+    for (const t of TOPICS) {
+      const dx = p[0] - t.position[0], dy = p[1] - t.position[1], dz = p[2] - t.position[2];
+      const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (d < minD) minD = d;
+    }
+    if (minD > bestMinDist) { bestMinDist = minD; best = p; }
+  }
+  return best;
+}
+
+function addTopicNode(topic) {
+  const colorObj = new THREE.Color(topic.color);
+  const haloMat = new THREE.SpriteMaterial({
+    map: makeGlowTexture(colorObj),
+    color: 0xffffff, transparent: true,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const halo = new THREE.Sprite(haloMat);
+  const size = topic.size || 1.0;
+  halo.scale.set(6 * size, 6 * size, 1);
+  const coreGeo = new THREE.SphereGeometry(0.6 * size, 24, 24);
+  const coreMat = new THREE.MeshBasicMaterial({ color: colorObj });
+  const core = new THREE.Mesh(coreGeo, coreMat);
+  const ringGeo = new THREE.RingGeometry(1.0 * size, 1.05 * size, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: colorObj, transparent: true, opacity: 0.25, side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  const node = new THREE.Group();
+  node.add(halo, core, ring);
+  node.position.set(...topic.position);
+  node.userData = { topicId: topic.id, core, halo, ring, baseColor: colorObj.clone(), size };
+  state.topicGroup.add(node);
+  state.topicMeshes.set(topic.id, node);
+
+  // bloom-in animation
+  let s = 0.001;
+  node.scale.setScalar(s);
+  const tick = () => {
+    s = Math.min(1, s + 0.05);
+    node.scale.setScalar(s);
+    if (s < 1) requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function persistTopic(topic) {
+  try {
+    const arr = JSON.parse(localStorage.getItem("motu.userTopics") || "[]");
+    arr.push(topic);
+    localStorage.setItem("motu.userTopics", JSON.stringify(arr));
+  } catch (e) { /* quota or json error — non-fatal */ }
+}
+function persistMoon(moon) {
+  try {
+    const arr = JSON.parse(localStorage.getItem("motu.userMoons") || "[]");
+    arr.push(moon);
+    localStorage.setItem("motu.userMoons", JSON.stringify(arr));
+  } catch (e) { /* non-fatal */ }
+}
+function loadPersistedEntities() {
+  try {
+    const topics = JSON.parse(localStorage.getItem("motu.userTopics") || "[]");
+    for (const t of topics) registerGeneratedTopic(t);
+    const moons = JSON.parse(localStorage.getItem("motu.userMoons") || "[]");
+    for (const m of moons) registerGeneratedMoon(m);
+  } catch (e) { /* corrupted localStorage — non-fatal */ }
+}
 
 async function callClaude(userText) {
   const context = state.currentTopic
@@ -1073,7 +1717,7 @@ async function callClaude(userText) {
   const body = {
     model: "claude-haiku-4-5-20251001",
     max_tokens: 600,
-    system: GUIDE_SYSTEM + "\n\n" + context,
+    system: buildGuideSystem() + "\n\n" + context,
     messages: messages,
   };
 

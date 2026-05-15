@@ -45,6 +45,14 @@
       </div>
       <div class="brand-sub">A 3D research library · drag to rotate · scroll to zoom · click a body to enter</div>
     </div>
+    <div class="hud-top-center">
+      <form id="searchForm" class="search" autocomplete="off">
+        <span class="search-glyph">⌖</span>
+        <input id="searchInput" class="search-input" type="text" placeholder="search the library — topic, moon, or new question…" />
+        <button type="submit" class="search-go" title="Search">go</button>
+      </form>
+      <div id="searchHint" class="search-hint">try “Buddhism”, “black holes”, or a question we haven't catalogued yet</div>
+    </div>
     <div class="hud-top-right">
       <button class="chip" id="btn-about" title="About">about</button>
       <button class="chip" id="btn-toggle-edges" title="Toggle constellations">edges</button>
@@ -207,6 +215,24 @@
       </button>
     </form>
   </aside>
+
+  <!-- Generation overlay (search → AI creates a new entity) -->
+  <div id="generation-overlay" class="generation" hidden>
+    <div class="generation-inner">
+      <div class="generation-sigil">
+        <svg viewBox="0 0 100 100" width="80" height="80">
+          <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(167,139,250,0.4)" stroke-width="0.5"/>
+          <circle cx="50" cy="50" r="36" fill="none" stroke="rgba(167,139,250,0.6)" stroke-width="0.5"/>
+          <circle cx="50" cy="50" r="26" fill="none" stroke="rgba(167,139,250,0.8)" stroke-width="0.5"/>
+          <circle cx="50" cy="50" r="3" fill="#a78bfa"/>
+          <g class="boot-orbit"><circle cx="86" cy="50" r="1.5" fill="#fff"/></g>
+        </svg>
+      </div>
+      <h2 class="generation-title" id="generationTitle">searching the archive…</h2>
+      <p class="generation-sub" id="generationSub">consulting the AI Guide</p>
+      <button class="generation-cancel" id="generationCancel" hidden>cancel</button>
+    </div>
+  </div>
 
   <!-- Toasts -->
   <div id="toast" class="toast" hidden></div>

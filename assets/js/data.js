@@ -867,6 +867,283 @@ export const TOPICS = [
   },
 ];
 
+/* ============================================================
+   Sub-topics — orbiting moons under a parent topic.
+   Smaller scope but same shape: each has its own conclusion
+   and document set. Rendered as orbiting bodies in planet view.
+   ============================================================ */
+
+export const SUB_TOPICS = {
+  "world-religions": [
+    {
+      id: "buddhism",
+      parentId: "world-religions",
+      name: "Buddhism",
+      color: "#f59e0b",
+      tags: ["dharma", "Theravada", "Mahayana", "meditation"],
+      orbit: { radius: 7.0, speed: 0.18, phase: 0.3, tilt: 0.12 },
+      planetTheme: { type: "mandala", params: { hue: 0.10, accent: 0.55, complexity: 9.0 } },
+      summary: "A 2,500-year-old tradition built around the diagnostic — suffering, its cause, its cessation, and the path — that became the most psychologically sophisticated of the major religions.",
+      conclusion: "Buddhism is best read as the world's most rigorous program in applied phenomenology, wearing the clothes of a religion.",
+      conclusionBody: [
+        { type: "p", text: "Whatever else Buddhism is, it is the most empirically-minded of the great traditions. The Four Noble Truths are a diagnostic schema, not a creed: identify suffering, locate its cause, posit that the cause can be removed, prescribe a practice. Twenty-five centuries of practitioners have refined the prescription with something approximating an experimental method." },
+        { type: "h4", text: "what is widely shared across the schools" },
+        { type: "ul", items: [
+          "The doctrine of anatta — non-self — applied as a phenomenological observation rather than a metaphysical claim.",
+          "Dependent origination: phenomena arise in conditioned chains, not from independent essences.",
+          "The contemplative cultivation of attention, equanimity, and insight as the path to the cessation of suffering.",
+        ]},
+        { type: "h4", text: "where the schools diverge" },
+        { type: "ul", items: [
+          "Theravada emphasizes individual liberation through monastic practice and the Pali canon.",
+          "Mahayana adds the bodhisattva ideal — postponing personal liberation for the sake of all sentient beings.",
+          "Vajrayana adds tantric methods that use desire and identification rather than purely renouncing them.",
+        ]},
+        { type: "p", text: "The honest distillation: Buddhism's metaphysics are debated; its method is robust. What converts skeptics is not the cosmology but the experiential delivery on its claims about attention, suffering, and what is and is not the self." },
+      ],
+      documents: [
+        {
+          id: "buddhism-anatta",
+          type: "doctrinal",
+          title: "Anatta: Non-Self as a Phenomenological Claim",
+          author: "doctrinal review · 2024",
+          summary: "Buddhism's denial of a persistent self is often misread as nihilism. The careful reading: the self is not denied as an experience, only as an independently-existing entity.",
+          findings: [
+            "Anatta is not 'there is no you'; it is 'the you you assume is a fixed thing isn't one'.",
+            "The doctrine has empirical content: directed attention can be brought to bear on the self-construction process and observe its components.",
+            "Modern neuroscience finds the experience of self maps onto the default-mode network, which is plastic and can be quieted — exactly what the tradition's claims predict.",
+          ],
+          prose: [
+            "Of all the Buddhist doctrines, anatta — non-self — is the one Western readers most frequently mistranslate into nihilism. The phrase 'there is no self' suggests denial of existence, of personhood, of moral responsibility. Read that way, it is incoherent: who is being told there is no self?",
+            "The careful reading is different. Anatta is a phenomenological claim about what the self actually is, not a metaphysical claim that the self does not exist. What we ordinarily call 'self' is a continuously-constructed bundle of sensations, perceptions, memories, intentions, and consciousness — five aggregates, in classical formulation — none of which is itself the self, and none of which is permanent.",
+            "The contemplative claim is that this construction can be observed in real time by trained attention. The bundle assembles itself moment-to-moment from inputs; the experience of being a continuous thing-having-experiences is itself one of the experiences, not the substrate underlying them. What Buddhists call 'insight' is, in part, becoming able to perceive this construction as it happens.",
+            "Contemporary neuroscience has partly converged on the same picture from the other direction. The default-mode network — the brain network active when we are not engaged in external tasks — appears to be the substrate of the constructed self. fMRI studies of experienced meditators show consistent reductions in DMN activity during practice, correlated with the phenomenological reports of self-dissolution. The brain has a self-construction subsystem; it can be quieted; what remains is conscious experience without a center."
+          ],
+        },
+        {
+          id: "buddhism-paths",
+          type: "comparative",
+          title: "Theravada, Mahayana, Vajrayana: One Diagnosis, Three Treatments",
+          author: "comparative survey · 2023",
+          summary: "The three major Buddhist vehicles agree on the diagnostic and diverge on the prescription. The differences are real and matter for practice.",
+          findings: [
+            "Theravada keeps closest to the Pali canon and emphasizes monastic discipline.",
+            "Mahayana introduces the bodhisattva path, expanded cosmology, and emptiness as a positive teaching.",
+            "Vajrayana uses tantric methods — visualization, mantra, deity yoga — within a Mahayana metaphysical frame.",
+          ],
+          prose: [
+            "All three major Buddhist vehicles accept the Four Noble Truths and the Eightfold Path as the foundational frame. They diverge on what fully waking up looks like, who can do it, and how. The differences are not trivial and they shape the day-to-day practice of practitioners in each tradition.",
+            "Theravada, the older surviving form, keeps closest to the historical material in the Pali canon. The goal is the arhat — individually liberated, the chain of suffering broken at the personal level. The method is monastic, gradual, and built on the systematic cultivation of ethics, concentration, and wisdom. Theravada is the dominant form in Sri Lanka, Thailand, Burma, and Cambodia.",
+            "Mahayana introduces the bodhisattva ideal: liberation is reframed as a project for the benefit of all sentient beings, and the practitioner takes the vow to remain in samsara as long as any being still suffers. The metaphysical apparatus also expands — emptiness (shunyata) becomes a central positive teaching, and a much larger cosmology of Buddhas and bodhisattvas develops. Mahayana is the dominant form in East Asia.",
+            "Vajrayana, sometimes considered a branch of Mahayana and sometimes a third vehicle, adds tantric methods: complex visualizations, mantra recitation, deity yoga, and practices designed to use rather than suppress the energies of desire and identification. The path is described as faster and more dangerous than the others. Vajrayana is the dominant form in Tibet and Mongolia.",
+            "The schools have argued with each other for two millennia and reached no resolution; the contemporary mature view is that they are different treatments suited to different temperaments, all addressing the same diagnostic. Modern Western practitioners often draw from all three with less inter-school argument than traditional Asian practitioners would expect."
+          ],
+        },
+      ],
+    },
+    {
+      id: "sufism",
+      parentId: "world-religions",
+      name: "Sufism",
+      color: "#fde047",
+      tags: ["Islamic mysticism", "tariqa", "fana", "Rumi"],
+      orbit: { radius: 9.0, speed: 0.13, phase: 2.5, tilt: -0.15 },
+      planetTheme: { type: "crystal", params: { hue: 0.12, accent: 0.08, facets: 6.0 } },
+      summary: "The mystical and contemplative dimension of Islam — older than the orthodoxy/heresy distinction, and the source of much of the world's most-quoted devotional poetry.",
+      conclusion: "Sufism is what happens when Islamic monotheism is asked to deliver the experience of God, not merely belief in God.",
+      conclusionBody: [
+        { type: "p", text: "Sufism is sometimes described as 'Islam's mystical wing', but this can mislead. Sufism is not a wing of Islam; it is the contemplative tradition within Islam, and for most of Islamic history was simply how serious Muslims pursued nearness to the divine. The orthodoxy/Sufism distinction is partly a 19th-20th century construct produced by reform movements that wanted to legislate religion as belief and ritual only." },
+        { type: "h4", text: "what the major orders share" },
+        { type: "ul", items: [
+          "The doctrine of dhikr — remembrance of God through repetition of divine names and phrases.",
+          "Sustained training under a sheikh within a tariqa (path/order) tracing initiatic lineage back to the Prophet.",
+          "The goal of fana — annihilation of the ego in the divine, with subsequent baqa, subsisting in God.",
+        ]},
+        { type: "h4", text: "where the orders differ" },
+        { type: "ul", items: [
+          "The Mevlevi (Rumi's order) use whirling dance as a primary practice; the Naqshbandiya emphasize silent dhikr; the Qadiriya emphasize ecstatic vocal practices.",
+          "Some orders are politically engaged and have shaped state formation; others are explicitly apolitical.",
+          "Theological framing ranges from highly Sharia-compliant (Naqshbandiya) to more antinomian (the Malamatiya).",
+        ]},
+        { type: "p", text: "The honest distillation: Sufism is the contemplative-mystical core of one of the world's three Abrahamic traditions, with a literary heritage that rivals any in human history. Its practical methods — dhikr, sustained relationship with a teacher, sustained community — are sophisticated and have been transmitted continuously for over a thousand years." },
+      ],
+      documents: [
+        {
+          id: "sufism-rumi",
+          type: "literary",
+          title: "Rumi and the Globalized Sufi",
+          author: "literary-historical · 2025",
+          summary: "Jalaluddin Rumi is the best-selling poet in modern North America, almost entirely in translations that strip out the Islam. The phenomenon tells us something about both Rumi and us.",
+          findings: [
+            "Rumi's actual corpus — the Masnavi and the Divan-i Shams-i Tabrizi — is densely Quranic and assumes the reader is a practicing Muslim.",
+            "The most popular English versions (Coleman Barks) are not translations from Persian but adaptations from prior English translations, with Islamic references substantially softened.",
+            "The result is a Rumi who is genuinely useful to non-Muslim readers and also genuinely different from the Rumi practiced by Mevlevi Sufis.",
+          ],
+          prose: [
+            "Jalaluddin Rumi died in Konya in 1273, leaving behind one of the largest and most cited bodies of devotional poetry in any language. The Masnavi runs to 25,000 verses and is sometimes called 'the Quran in Persian'. The Divan-i Shams, written after the disappearance of Rumi's beloved companion Shams-i Tabrizi, contains some of the most intense ecstatic poetry produced anywhere.",
+            "Seven hundred years later, Rumi is the best-selling poet in the United States. This is genuinely strange. American readers do not generally read 13th-century Sunni Muslim mystics. The mechanism by which Rumi crossed over is largely the work of Coleman Barks, whose adaptations from the 1990s onward made Rumi readable to a non-Muslim audience by softening or removing specifically Islamic references and rendering the result in an accessible English idiom.",
+            "Barks's Rumi is widely loved and not strictly a translation. Barks does not read Persian; he works from prior English translations and produces what he calls 'versions'. The result is a Rumi who speaks of beloved, of separation and union, of the soul's longing — but rarely of Allah, of the Prophet, of the specific Islamic theological frame within which the original poetry operates.",
+            "This is not necessarily a critique. Barks's Rumi has introduced millions of readers to genuine Sufi insight in a form they can absorb. But the contrast with Sufi practitioners — who read Rumi within the full Islamic-mystical context, often in Persian, embedded in regular practice — is striking. There are now effectively two Rumis: the global devotional poet read in airports, and the Sufi master read in tariqas. Both are real. They are not the same."
+          ],
+        },
+        {
+          id: "sufism-tariqa",
+          type: "practical",
+          title: "The Tariqa: How a Sufi Order Actually Operates",
+          author: "ethnographic · 2024",
+          summary: "Beyond the poetry, Sufism is a sustained social technology for transmitting contemplative practice across generations. How an active order actually works.",
+          findings: [
+            "Every active tariqa traces an unbroken initiatic chain (silsila) back to the Prophet via successive sheikhs.",
+            "Initiation is gradual; the relationship with the sheikh is the central transmission mechanism, not text.",
+            "Daily practice combines obligatory Islamic ritual with order-specific dhikr, often performed in group.",
+          ],
+          prose: [
+            "Sufism as a literary tradition is widely accessible; Sufism as a practiced tradition is much less so. Practiced Sufism is organized through tariqas — orders, each tracing its lineage back to the Prophet Muhammad through a continuous chain of sheikh-to-student transmissions. To be a practicing Sufi means to have been initiated into a specific tariqa by a specific sheikh, and to be engaged in ongoing relationship with that line.",
+            "The structure has functional reasons. Sufi practice involves states and stations (ahwal and maqamat) that are dangerous to navigate alone — the literature is full of practitioners who failed to find a teacher and lost their way, or burned themselves out. The sheikh's role is to assign practices appropriate to the disciple's current condition, to recognize stages of progress, and to keep the disciple oriented toward the goal rather than toward intermediate states.",
+            "A typical week in an active tariqa includes the five obligatory daily prayers (this is non-negotiable; Sufism is Islam, not a substitute for it), private daily dhikr assigned by the sheikh, often a weekly group gathering for collective dhikr, and periodic intensive retreats. The practices are ordered: the disciple does not invent her own practice but receives a specific protocol that has been refined over generations.",
+            "This is a slow tradition. It is not designed for the quick contact-mysticism of a weekend retreat. The serious work begins after years of preparatory practice. The literature on this is mostly in Arabic, Persian, Turkish, and Urdu, and most of it has never been translated. The contemporary Western seeker who wants to encounter actual practiced Sufism has to find an active tariqa willing to take them on, and the bar for that is real."
+          ],
+        },
+      ],
+    },
+  ],
+
+  "astrophysics": [
+    {
+      id: "black-holes",
+      parentId: "astrophysics",
+      name: "Black Holes",
+      color: "#9333ea",
+      tags: ["event horizon", "Hawking radiation", "supermassive", "EHT"],
+      orbit: { radius: 7.5, speed: 0.12, phase: 1.0, tilt: 0.2 },
+      planetTheme: { type: "cmb", params: { hue: 0.72, accent: 0.05, structure: 0.6 } },
+      summary: "Regions of spacetime so curved that even light cannot escape — once a theoretical curiosity, now imaged, weighed, and observed merging.",
+      conclusion: "Black holes are no longer a hypothesis. They are catalogued objects whose properties are measured to several decimal places.",
+      conclusionBody: [
+        { type: "p", text: "The conceptual journey of black holes from 'unphysical singularity in someone's calculation' to 'object whose shadow we have photographed' has played out over a single century. The 2019 image of M87*'s event horizon, and the 2022 image of Sagittarius A* at the center of our own galaxy, are not just pretty pictures — they are direct tests of general relativity in the strong-field regime, and GR passed." },
+        { type: "h4", text: "what is settled" },
+        { type: "ul", items: [
+          "Stellar-mass black holes exist as endpoints of massive-star evolution and are the dark partners in many X-ray binaries.",
+          "Supermassive black holes (10^6 to 10^10 solar masses) sit at the centers of essentially all large galaxies, including ours.",
+          "Compact-binary mergers detected via gravitational waves are at least partly black-hole mergers, and the population has filled in faster than any theorist predicted.",
+        ]},
+        { type: "h4", text: "what is wide open" },
+        { type: "ul", items: [
+          "How supermassive black holes get to be supermassive so early — quasars at z > 7 imply growth mechanisms we don't fully understand.",
+          "The information paradox — does information that falls into a black hole survive in subtle correlations in Hawking radiation, or is it lost? — has been the central problem of quantum gravity for fifty years.",
+        ]},
+      ],
+      documents: [
+        {
+          id: "bh-eht-image",
+          type: "discovery",
+          title: "What the Event Horizon Telescope Actually Imaged",
+          author: "instrumental · 2023",
+          summary: "The famous 'black hole picture' is a synthesized image from a planet-scale VLBI array combining stations from Hawaii to Antarctica. Reading it properly requires understanding what the data really show.",
+          findings: [
+            "The dark central region is the 'shadow' of the event horizon, magnified by gravitational lensing by a factor of ~2.6.",
+            "The bright ring is photons orbiting near the photon sphere and being deflected toward us.",
+            "The ring's diameter, shape, and asymmetry simultaneously constrain the black hole's mass, spin, and orientation.",
+          ],
+          prose: [
+            "The April 2019 release of the Event Horizon Telescope's image of M87* — a six-billion-solar-mass black hole at the center of the M87 galaxy — was widely described as 'the first picture of a black hole'. The phrasing is approximately right but worth unpacking, because the data are not what a casual viewer assumes.",
+            "M87* is too small in angular size for any single telescope to resolve. The EHT solves this by performing very-long-baseline interferometry across a global array of millimeter-wave radio telescopes — from Hawaii, Arizona, Mexico, Chile, Spain, and Antarctica. The effective aperture is the diameter of the Earth. The signals from each station are atomic-clock-synchronized, recorded to disk, physically shipped to processing centers, and correlated to extract the interferometric visibilities.",
+            "The image is then reconstructed from those visibilities via algorithms similar in spirit to MRI reconstruction. It is not a direct photograph; it is an inferred image consistent with the measured interference pattern. Multiple independent reconstruction pipelines were run blind against the data and they converged on the same picture, which is the key calibration of the result.",
+            "What the picture shows: a dark central region — the 'shadow' of the event horizon, gravitationally magnified by a factor of about 2.6 — surrounded by a bright photon ring from light orbiting near the photon sphere. The diameter, shape, and brightness asymmetry of the ring jointly constrain the black hole's mass, spin parameter, and viewing geometry. Everything checks out against general relativity. The 2022 release of Sagittarius A* at our galactic center used the same technique and produced an image consistent with GR for a black hole roughly 4 million solar masses."
+          ],
+        },
+        {
+          id: "bh-information",
+          type: "frontier",
+          title: "The Information Paradox: Still the Hardest Problem in Quantum Gravity",
+          author: "theoretical · 2025",
+          summary: "Hawking showed in 1974 that black holes radiate and eventually evaporate. The radiation appears thermal — and that's a problem, because quantum mechanics says information must be preserved.",
+          findings: [
+            "Pure quantum states evolve to pure states; thermal radiation is mixed; black-hole evaporation appears to violate this.",
+            "The 2019-2020 'Page curve' calculations from AdS/CFT-adjacent methods strongly suggest information does survive — encoded in subtle correlations across the radiation.",
+            "We do not yet have a complete description of the mechanism in our universe (which is not AdS), but the holographic principle is now considered the most likely framework for the resolution.",
+          ],
+          prose: [
+            "Stephen Hawking's 1974 calculation showed that black holes are not perfectly black — quantum effects near the horizon cause them to radiate at a temperature inversely proportional to their mass. Over very long timescales, a black hole radiates away its entire mass and disappears. This is in itself a remarkable result. What made it a fifty-year crisis in theoretical physics is what happens to the information that fell in.",
+            "Quantum mechanics imposes unitary evolution: the information content of a pure quantum state is preserved as it evolves. If you throw a book into a black hole, the precise quantum state of the book is preserved, in principle, somewhere. Hawking's calculation, however, indicated that the radiation emitted is essentially thermal — characterized only by temperature, carrying no information about what fell in. If the black hole evaporates completely, leaving only thermal radiation, the information appears to be lost. This contradicts a foundational principle of quantum mechanics.",
+            "For decades the field was split. Hawking himself, for most of his life, argued that information is genuinely lost and quantum mechanics must be modified. His former student Don Page and most of the string-theory community argued the opposite — that information must be preserved and Hawking's calculation was missing subtle correlations.",
+            "Beginning around 2019, calculations using techniques from the AdS/CFT correspondence and 'replica wormholes' produced what is now considered substantial evidence for the information-preserving side. The 'Page curve' — the time-evolution of the entanglement entropy of the radiation — has the shape that conservation of information requires, not the shape that information loss would produce. The mechanism appears to involve subtle correlations across the radiation that are imperceptible to any local measurement but reconstruct the full quantum information in principle.",
+            "These calculations are in highly idealized setups (anti-de Sitter spacetime, mathematically tractable). Transferring the results to our actual universe is in progress and not yet complete. But the consensus has shifted: information is preserved, the holographic principle is the framework, and Hawking — generously — would now probably agree."
+          ],
+        },
+      ],
+    },
+  ],
+
+  "computation": [
+    {
+      id: "cryptography",
+      parentId: "computation",
+      name: "Cryptography",
+      color: "#06b6d4",
+      tags: ["RSA", "elliptic curve", "post-quantum", "zero-knowledge"],
+      orbit: { radius: 7.0, speed: 0.16, phase: 1.5, tilt: -0.1 },
+      planetTheme: { type: "circuit", params: { hue: 0.52, accent: 0.7, density: 2.0 } },
+      summary: "The mathematical practice of constructing protocols that work in the presence of adversaries — and the field with the cleanest open exposure to the quantum threat.",
+      conclusion: "Modern cryptography is mostly solved as engineering and partly unsolved as theory — and the quantum transition is forcing a reckoning with the parts we never quite proved.",
+      conclusionBody: [
+        { type: "p", text: "Cryptography in 2026 is in an unusual position. The systems we deploy daily — TLS, signature schemes, key exchange — work reliably and are not the bottleneck in actual security failures (those come from implementation bugs, supply chains, and humans). At the same time, the field's theoretical foundations rest on unproven assumptions, and the imminent arrival of cryptographically-relevant quantum computers is forcing a transition to entirely new mathematical primitives." },
+        { type: "h4", text: "what is settled" },
+        { type: "ul", items: [
+          "Symmetric cryptography (AES, ChaCha20) is on solid empirical footing and not under near-term threat from quantum computers — Grover's algorithm only halves effective key length.",
+          "Public-key cryptography based on factoring (RSA) and discrete logs (Diffie-Hellman, ECDSA) is broken by sufficiently large quantum computers via Shor's algorithm.",
+          "NIST has standardized post-quantum replacements (CRYSTALS-Kyber for KEM, CRYSTALS-Dilithium for signatures); migration is in progress.",
+        ]},
+        { type: "h4", text: "what is wide open" },
+        { type: "ul", items: [
+          "We do not have a proof that any cryptographic system is secure. All security reductions terminate in unproven assumptions (P ≠ NP, lattice-problem hardness, etc.).",
+          "Zero-knowledge proofs, fully homomorphic encryption, and multi-party computation are theoretically achievable but practically expensive.",
+          "Side-channel attacks, implementation flaws, and quantum side channels remain the actual source of most security failures.",
+        ]},
+      ],
+      documents: [
+        {
+          id: "crypto-post-quantum",
+          type: "transition",
+          title: "The Post-Quantum Migration: Where We Are",
+          author: "policy/technical · 2026",
+          summary: "NIST has standardized the first batch of post-quantum primitives. The actual migration of the world's deployed cryptography is the larger problem and is just beginning.",
+          findings: [
+            "CRYSTALS-Kyber (lattice-based KEM) and CRYSTALS-Dilithium (lattice-based signatures) were finalized by NIST in 2024.",
+            "Falcon and SPHINCS+ are alternates for signatures.",
+            "TLS 1.3 hybrid modes (combining classical and post-quantum key exchange) are deployed by Cloudflare, Google, and others; full transition will take many years.",
+          ],
+          prose: [
+            "The cryptography-relevant quantum computer does not yet exist, but the cryptographic community has been planning its arrival for a decade. NIST began the Post-Quantum Cryptography Standardization process in 2016 with a call for candidate algorithms. Hundreds of submissions, multiple rounds of analysis, several embarrassing breaks of candidates, and eight years later, the first standards are finalized.",
+            "The chosen primitives are lattice-based for the most part. CRYSTALS-Kyber is the standard key-encapsulation mechanism — the post-quantum replacement for the elliptic-curve Diffie-Hellman that today negotiates session keys in most TLS connections. CRYSTALS-Dilithium is the primary signature scheme. Falcon, also lattice-based, is an alternate signature scheme with smaller signatures but harder implementation. SPHINCS+, based purely on hash functions, is conservatively secure and an option for use cases where simplicity matters more than performance.",
+            "The standards are settled; the migration is where the actual work lives. The world has roughly thirty years of accumulated cryptographic infrastructure — embedded systems, signed firmware, long-lived certificates, encrypted archives — most of which is currently relying on classical primitives. 'Harvest now, decrypt later' attacks make this urgent for any data with long-term confidentiality requirements: an adversary records encrypted traffic today and decrypts it once a quantum computer becomes available.",
+            "Major providers have begun rolling out hybrid TLS modes that combine classical and post-quantum key exchange — Cloudflare, Google, and Amazon have all deployed hybrid Kyber to substantial fractions of their edges. This protects against future quantum attacks while preserving compatibility with current clients. Full migration of the world's cryptography will be a decade-plus project."
+          ],
+        },
+        {
+          id: "crypto-zk",
+          type: "frontier",
+          title: "Zero-Knowledge Proofs: The Other Cryptographic Revolution",
+          author: "frontier · 2025",
+          summary: "Beyond the post-quantum transition, the deepest current development in applied cryptography is the practicality of zero-knowledge proofs.",
+          findings: [
+            "ZK proofs allow proving that a statement is true without revealing why it is true — long theoretical, now practical.",
+            "ZK-SNARKs and ZK-STARKs have brought verification to sub-millisecond range for many real circuits.",
+            "Applications: scaling layer-2 blockchains, anonymous credentials, verified machine learning inference, private contact tracing.",
+          ],
+          prose: [
+            "Zero-knowledge proofs were introduced by Goldwasser, Micali, and Rackoff in 1985. The idea — proving you know a secret without revealing the secret — sounds magical and the original constructions were too inefficient for practical use. For thirty years ZK proofs were a beautiful theoretical result with limited applications. That changed in the mid-2010s.",
+            "ZK-SNARKs (Zero-Knowledge Succinct Non-Interactive Arguments of Knowledge), starting with the Pinocchio protocol and Groth16 construction, brought ZK proofs to the point where one party could prove the correctness of an arbitrary computation, and another party could verify the proof in milliseconds and with constant-size proofs, regardless of how large the original computation was. This is genuinely strange. A statement about a computation that took an hour can be verified in 10 milliseconds.",
+            "ZK-STARKs, introduced around 2018, give up the constant-size proofs of SNARKs in exchange for not requiring a trusted setup and being post-quantum secure. Both families are now production-deployed.",
+            "The applications have started landing. Layer-2 blockchain scaling (zkSync, StarkNet) uses ZK proofs to compress thousands of transactions into a single mainnet verification. Anonymous credential systems let users prove they are over 18 or are a verified employee without revealing identity. Verified machine learning inference allows a service to prove it ran a specific model on your inputs without revealing the model weights. The general pattern: anywhere we currently rely on trust because verification was too expensive, ZK proofs let us substitute mathematics.",
+            "The frontier today is bringing the prover's costs down. Generating a ZK proof for a complex computation can still take orders of magnitude longer than the original computation. This is fine for blockchain settings where verification cost dominates, less fine for real-time applications. Hardware acceleration for ZK proving is now a $1B+ research and commercial sector."
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 /* Edges — symmetric. Encoded once. */
 export const EDGES = [
   ["simulation-theory", "computation"],
@@ -894,6 +1171,48 @@ export function topicById(id) {
   return TOPICS.find(t => t.id === id);
 }
 
+export function subTopicsOf(parentId) {
+  return SUB_TOPICS[parentId] || [];
+}
+
+export function subTopicById(id) {
+  for (const parentId of Object.keys(SUB_TOPICS)) {
+    const found = SUB_TOPICS[parentId].find(s => s.id === id);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Find any entry — top-level topic or moon — by id.
+ * Returns { entry, kind: "topic" | "moon", parent? }.
+ */
+export function resolveById(id) {
+  const topic = topicById(id);
+  if (topic) return { entry: topic, kind: "topic" };
+  const sub = subTopicById(id);
+  if (sub) return { entry: sub, kind: "moon", parent: topicById(sub.parentId) };
+  return null;
+}
+
+/**
+ * Flat searchable list of every topic + every moon, with the fields
+ * we search against. Used for local fuzzy match before falling
+ * back to the AI generator.
+ */
+export function allSearchable() {
+  const out = [];
+  for (const t of TOPICS) {
+    out.push({ id: t.id, kind: "topic", name: t.name, tags: t.tags || [], summary: t.summary, ref: t });
+  }
+  for (const parentId of Object.keys(SUB_TOPICS)) {
+    for (const s of SUB_TOPICS[parentId]) {
+      out.push({ id: s.id, kind: "moon", name: s.name, tags: s.tags || [], summary: s.summary, ref: s, parentId });
+    }
+  }
+  return out;
+}
+
 export function connectionsOf(id) {
   const set = new Set();
   for (const [a, b] of EDGES) {
@@ -901,4 +1220,17 @@ export function connectionsOf(id) {
     if (b === id) set.add(a);
   }
   return [...set].map(topicById).filter(Boolean);
+}
+
+/**
+ * Register a user-generated topic or moon at runtime.
+ * Mutates the in-memory data so the rest of the app sees it.
+ * The caller is responsible for persisting to localStorage.
+ */
+export function registerGeneratedTopic(topic) {
+  TOPICS.push(topic);
+}
+export function registerGeneratedMoon(moon) {
+  if (!SUB_TOPICS[moon.parentId]) SUB_TOPICS[moon.parentId] = [];
+  SUB_TOPICS[moon.parentId].push(moon);
 }
