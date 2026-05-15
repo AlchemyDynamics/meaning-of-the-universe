@@ -311,6 +311,17 @@ em { color: var(--ink-0); font-style: italic; }
 
 .conn-review-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
 
+/* Inline "+ add connection" inside the existing connections modal */
+.conn-adder { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.conn-adder .add-conn-btn {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: lowercase;
+  color: var(--accent);
+  padding: 8px 16px; border-radius: 999px;
+  background: transparent; border: 1px dashed var(--line-2);
+  transition: background 0.15s, border-color 0.15s;
+}
+.conn-adder .add-conn-btn:hover { background: rgba(167,139,250,0.08); border-color: var(--accent); }
+
 /* Connections grid */
 .conn-intro { font-family: var(--serif); font-style: italic; color: var(--ink-2); margin-bottom: 16px; }
 .conn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }

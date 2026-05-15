@@ -1089,6 +1089,7 @@ function openConnections(entry) {
   document.getElementById("connTitle").textContent = entry.name;
   const grid = document.getElementById("connGrid");
   grid.innerHTML = "";
+  document.getElementById("connAdder").innerHTML = "";
 
   // moon: connections = parent + sibling moons
   if (entry.parentId) {
@@ -1135,7 +1136,108 @@ function openConnections(entry) {
     }
   }
 
+  // For top-level topics only: offer an inline "+ add connection" affordance.
+  // (Moons don't participate in the galactic edge graph.)
+  if (!entry.parentId) {
+    renderConnAdderButton(entry);
+  }
+
   document.getElementById("modal-connections").hidden = false;
+}
+
+function renderConnAdderButton(topic) {
+  const host = document.getElementById("connAdder");
+  host.innerHTML = "";
+  const btn = document.createElement("button");
+  btn.className = "add-conn-btn";
+  btn.textContent = "+ add connection";
+  btn.addEventListener("click", () => renderConnAdderPicker(topic));
+  host.appendChild(btn);
+}
+
+function renderConnAdderPicker(topic) {
+  const host = document.getElementById("connAdder");
+  host.innerHTML = "";
+
+  const connectedIds = new Set(connectionsOf(topic.id).map(c => c.id));
+  connectedIds.add(topic.id);
+  const available = TOPICS.filter(t => !connectedIds.has(t.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (available.length === 0) {
+    const p = document.createElement("p");
+    p.className = "dim";
+    p.textContent = "Already connected to every other star.";
+    host.appendChild(p);
+    return;
+  }
+
+  const intro = document.createElement("p");
+  intro.className = "conn-intro";
+  intro.textContent = "Pick topics to connect to:";
+  host.appendChild(intro);
+
+  const list = document.createElement("div");
+  list.className = "conn-checklist";
+  host.appendChild(list);
+
+  for (const other of available) {
+    const row = document.createElement("label");
+    row.className = "conn-check-row";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = other.id;
+    const dot = document.createElement("span");
+    dot.className = "conn-check-dot";
+    dot.style.background = other.color;
+    dot.style.color = other.color;
+    const name = document.createElement("span");
+    name.className = "conn-check-name";
+    name.textContent = other.name;
+    row.appendChild(cb);
+    row.appendChild(dot);
+    row.appendChild(name);
+    cb.addEventListener("change", updateCount);
+    list.appendChild(row);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "conn-review-actions";
+  const cancel = document.createElement("button");
+  cancel.className = "setting-btn ghost";
+  cancel.textContent = "cancel";
+  cancel.addEventListener("click", () => renderConnAdderButton(topic));
+  const confirm = document.createElement("button");
+  confirm.className = "setting-btn";
+  const countSpan = document.createElement("span");
+  countSpan.textContent = "0";
+  const pluralSpan = document.createElement("span");
+  confirm.appendChild(document.createTextNode("add "));
+  confirm.appendChild(countSpan);
+  confirm.appendChild(document.createTextNode(" connection"));
+  confirm.appendChild(pluralSpan);
+  actions.appendChild(cancel);
+  actions.appendChild(confirm);
+  host.appendChild(actions);
+
+  function updateCount() {
+    const checked = list.querySelectorAll("input:checked").length;
+    countSpan.textContent = checked;
+    pluralSpan.textContent = checked === 1 ? "" : "s";
+  }
+
+  confirm.addEventListener("click", () => {
+    const checked = [...list.querySelectorAll("input:checked")];
+    if (checked.length === 0) { renderConnAdderButton(topic); return; }
+    for (const cb of checked) {
+      if (registerGeneratedEdge(topic.id, cb.value)) {
+        persistEdge(topic.id, cb.value);
+      }
+    }
+    rebuildEdges();
+    toast(`+ ${checked.length} connection${checked.length === 1 ? "" : "s"}`);
+    openConnections(topic);  // re-render the modal to show new cards
+  });
 }
 
 function mkConnCard(entity, sub) {
