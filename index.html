@@ -90,8 +90,11 @@
       </form>
     </div>
 
-    <div class="planet-panel">
-      <div class="planet-eyebrow" id="planetCluster">cluster</div>
+    <div class="planet-panel" id="planetPanel">
+      <div class="planet-drag-handle" id="planetDragHandle">
+        <div class="planet-eyebrow"><span class="dim-tag">research environment ·</span> <span id="planetCluster">cluster</span></div>
+        <div class="planet-drag-glyph" title="drag to move">⋮⋮</div>
+      </div>
       <h2 class="planet-title" id="planetTitle">Topic</h2>
       <p class="planet-summary" id="planetSummary"></p>
 
@@ -113,8 +116,8 @@
         </button>
         <button class="menu-btn" data-action="ask-guide">
           <span class="menu-icon">✦</span>
-          <span class="menu-label">ask the guide</span>
-          <span class="menu-sub">open AI chat</span>
+          <span class="menu-label">ask The Librarian</span>
+          <span class="menu-sub">open chat / voice</span>
         </button>
       </div>
 
@@ -262,23 +265,23 @@
       <div class="modal-body">
         <p>A 3D research library organized as a galaxy. Each star is a domain of inquiry. Each planet is a research environment that distills its corpus into a conclusion you can read in a minute — or descend into for hours.</p>
         <p>The library begins with eight territories spanning the metaphysical, physical, systemic, and human: <em>Simulation Theory · Plasma Dynamics · World Religions · Economics · Esoterica · Astrophysics · Cosmology · Computation</em>.</p>
-        <p>An AI Guide — bring your own Claude API key — can help you navigate, summarize, and propose adjacent reading. Press <kbd>?</kbd> to open it from anywhere.</p>
+        <p>The Librarian — bring your own Claude API key — can help you navigate, summarize, and propose adjacent reading. Click the chip or press <kbd>?</kbd> to open. Click the mic to speak; replies are spoken back in your chosen voice.</p>
         <p class="dim">A project by <a href="https://github.com/AlchemyDynamics" target="_blank" rel="noopener">Alchemy Dynamics</a>. MIT licensed.</p>
       </div>
     </div>
   </div>
 
-  <!-- AI Guide dock -->
-  <button id="guide-toggle" class="guide-toggle" title="Ask the AI Guide (?)">
+  <!-- The Librarian dock -->
+  <button id="guide-toggle" class="guide-toggle" title="Ask The Librarian (?)">
     <span class="guide-toggle-glyph">✦</span>
-    <span class="guide-toggle-label">guide</span>
+    <span class="guide-toggle-label">librarian</span>
   </button>
 
   <aside id="guide" class="guide" hidden>
-    <header class="guide-head">
+    <header class="guide-head" id="guideDragHandle">
       <div class="guide-title">
         <span class="guide-glyph">✦</span>
-        <span>AI Guide</span>
+        <span>The Librarian</span>
       </div>
       <div class="guide-context" id="guideContext">galactic view</div>
       <button class="guide-close" id="guide-close" title="Close">✕</button>
@@ -288,8 +291,8 @@
       <div class="guide-msg guide-msg-bot">
         <div class="guide-msg-glyph">✦</div>
         <div class="guide-msg-content">
-          <p>I'm the steward of this library. Ask me where to look, what a topic distills to, or what to read next. I can also navigate the galaxy for you — say <em>"take me to Cosmology"</em>.</p>
-          <p class="dim">To enable replies, paste a Claude API key below. It is stored only in this browser.</p>
+          <p>I am The Librarian — steward of this collection. Ask me where to look, what a topic distills to, or what to read next. I can also navigate the galaxy for you — say <em>"take me to Cosmology"</em>.</p>
+          <p class="dim">To enable replies, paste a Claude API key below. It stays in this browser only.</p>
         </div>
       </div>
     </div>
@@ -300,7 +303,13 @@
     </div>
 
     <form class="guide-input-row" id="guideForm" autocomplete="off">
-      <input type="text" id="guideInput" class="guide-input" placeholder="ask the guide…" />
+      <button type="button" id="guideMic" class="guide-mic" title="Voice — click to speak">
+        <svg viewBox="0 0 24 24" width="16" height="16">
+          <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" fill="currentColor"/>
+          <path d="M19 11a7 7 0 0 1-14 0M12 18v3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <input type="text" id="guideInput" class="guide-input" placeholder="ask The Librarian…" />
       <button type="submit" class="guide-send" title="Send">
         <svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 12l18-9-9 18-2-7-7-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
       </button>

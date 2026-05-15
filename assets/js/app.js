@@ -783,7 +783,7 @@ async function handleTagClick(tagText) {
   }
   // either no match, or the only match is the entry we're already on — generate a fresh entry
   if (!state.guideKey) {
-    toast(`Connect AI Guide to explore "${tagText}"`);
+    toast(`Connect The Librarian to explore "${tagText}"`);
     openGuide();
     return;
   }
@@ -2146,7 +2146,8 @@ function attachUI() {
     m.addEventListener("click", (e) => { if (e.target === m) closeAllModals(); });
   });
 
-  // guide
+  // librarian
+  setupLibrarianVoice();
   document.getElementById("guide-toggle").addEventListener("click", openGuide);
   document.getElementById("guide-close").addEventListener("click", closeGuide);
   document.getElementById("guideForm").addEventListener("submit", (e) => {
@@ -2173,6 +2174,75 @@ function attachUI() {
 
   // search
   setupSearch();
+
+  // draggable windows
+  setupDraggable(document.getElementById("guide"), document.getElementById("guideDragHandle"), "motu.win.guide");
+  setupDraggable(document.getElementById("planetPanel"), document.getElementById("planetDragHandle"), "motu.win.planet");
+}
+
+/**
+ * Make a window draggable by a handle. Position persists in localStorage.
+ * Switches the element from right/bottom CSS positioning to absolute left/top
+ * on first drag, so the initial CSS lays it out and the user can then move it.
+ */
+function setupDraggable(panel, handle, storageKey) {
+  if (!panel || !handle) return;
+
+  // Restore persisted position
+  const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+  if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+    applyDragPos(panel, saved.left, saved.top);
+  }
+
+  let dragging = false;
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+
+  handle.addEventListener("pointerdown", (e) => {
+    // ignore drags initiated on inner controls (close buttons, etc.)
+    if (e.target.closest("button") && !e.target.closest("#planetDragHandle, #guideDragHandle")) return;
+    dragging = true;
+    handle.setPointerCapture(e.pointerId);
+    panel.classList.add("dragging");
+    const rect = panel.getBoundingClientRect();
+    startX = e.clientX; startY = e.clientY;
+    startLeft = rect.left; startTop = rect.top;
+    // freeze initial position via top/left and remove right/bottom CSS pinning
+    applyDragPos(panel, startLeft, startTop);
+    e.preventDefault();
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    let nx = startLeft + dx;
+    let ny = startTop + dy;
+    // clamp to viewport (keep at least 80px of handle visible)
+    const rect = panel.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    nx = Math.max(-w + 80, Math.min(window.innerWidth - 80, nx));
+    ny = Math.max(0, Math.min(window.innerHeight - 40, ny));
+    applyDragPos(panel, nx, ny);
+  });
+
+  const endDrag = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    handle.releasePointerCapture(e.pointerId);
+    panel.classList.remove("dragging");
+    const rect = panel.getBoundingClientRect();
+    localStorage.setItem(storageKey, JSON.stringify({ left: rect.left, top: rect.top }));
+  };
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+}
+
+function applyDragPos(panel, left, top) {
+  panel.style.left = left + "px";
+  panel.style.top = top + "px";
+  panel.style.right = "auto";
+  panel.style.bottom = "auto";
+  panel.style.transform = "none";
 }
 
 function toast(msg) {
@@ -2245,20 +2315,23 @@ function renderGuideMarkdown(text) {
   return inline.split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
 }
 
-async function sendGuide(text) {
+async function sendGuide(text, opts = {}) {
   addGuideMessage("user", text);
   state.guideHistory.push({ role: "user", content: text });
 
   // try simple intent first — "take me to X"
   const navMatch = matchNavIntent(text);
   if (navMatch) {
-    const tip = `Taking you to **${navMatch.name}**. ${navMatch.summary}`;
+    const tip = `Taking you to ${navMatch.name}. ${navMatch.summary}`;
     addGuideMessage("bot", tip, { navId: navMatch.id, navName: navMatch.name });
+    if (opts.speakReply) speakLibrarianReply(tip);
     return;
   }
 
   if (!state.guideKey) {
-    addGuideMessage("bot", "I need a Claude API key to answer freely. Paste one above — it stays in this browser only. Or ask me to *take you to* a specific topic and I'll navigate without an API.");
+    const msg = "I need a Claude API key to answer freely. Paste one above — it stays in this browser only. Or ask me to take you to a specific topic and I'll navigate without an API.";
+    addGuideMessage("bot", msg);
+    if (opts.speakReply) speakLibrarianReply(msg);
     return;
   }
 
@@ -2266,14 +2339,113 @@ async function sendGuide(text) {
   try {
     const reply = await callClaude(text);
     typingEl.remove();
-    // detect navigation intent in reply
     const navTopic = detectReplyNav(reply);
     addGuideMessage("bot", reply, navTopic ? { navId: navTopic.id, navName: navTopic.name } : {});
     state.guideHistory.push({ role: "assistant", content: reply });
+    if (opts.speakReply) speakLibrarianReply(reply);
   } catch (err) {
     typingEl.remove();
-    addGuideMessage("bot", `the line went quiet. *${escapeHtml(err.message || "unknown error")}*`);
+    const errMsg = `the line went quiet. ${err.message || "unknown error"}`;
+    addGuideMessage("bot", errMsg);
+    if (opts.speakReply) speakLibrarianReply(errMsg);
   }
+}
+
+/* Strip the [[navigate:id]] markers and any markdown before speaking. */
+function speakLibrarianReply(text) {
+  const clean = text
+    .replace(/\[\[navigate:[a-z0-9-]+\]\]/gi, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .trim();
+  if (!clean) return;
+  startSpeech(clean, null);  // no button highlight — TTS just plays
+}
+
+/* ============================================================
+   Voice input (Speech Recognition) for The Librarian.
+   Web Speech API — works in Chrome/Edge; gracefully disabled elsewhere.
+   ============================================================ */
+const VOICE = {
+  recognition: null,
+  listening: false,
+};
+
+function setupLibrarianVoice() {
+  const btn = document.getElementById("guideMic");
+  if (!btn) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    btn.classList.add("unavailable");
+    btn.title = "Voice input not supported in this browser (try Chrome or Edge)";
+    btn.addEventListener("click", () => toast("Voice input requires Chrome or Edge"));
+    return;
+  }
+
+  VOICE.recognition = new SR();
+  VOICE.recognition.continuous = false;
+  VOICE.recognition.interimResults = true;
+  VOICE.recognition.lang = "en-US";
+
+  const input = document.getElementById("guideInput");
+  let finalText = "";
+
+  VOICE.recognition.onresult = (e) => {
+    let interim = "";
+    finalText = "";
+    for (const result of e.results) {
+      if (result.isFinal) finalText += result[0].transcript;
+      else interim += result[0].transcript;
+    }
+    input.value = (finalText + " " + interim).trim();
+  };
+
+  VOICE.recognition.onerror = (e) => {
+    console.warn("[STT] error", e.error);
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      toast("Microphone permission denied");
+    }
+    stopListening();
+  };
+
+  VOICE.recognition.onend = () => {
+    const wasListening = VOICE.listening;
+    stopListening();
+    if (wasListening) {
+      const text = input.value.trim();
+      if (text) {
+        input.value = "";
+        // mark this turn as voice so the response is spoken back
+        sendGuide(text, { speakReply: true });
+      }
+    }
+  };
+
+  btn.addEventListener("click", () => {
+    if (VOICE.listening) {
+      VOICE.recognition.stop();   // triggers onend
+      return;
+    }
+    openGuide();
+    stopSpeech();                  // don't talk over the user
+    try {
+      VOICE.recognition.start();
+      VOICE.listening = true;
+      btn.classList.add("listening");
+      input.value = "";
+      input.placeholder = "listening…";
+    } catch (e) {
+      console.warn("[STT] start failed", e);
+    }
+  });
+}
+
+function stopListening() {
+  const btn = document.getElementById("guideMic");
+  const input = document.getElementById("guideInput");
+  VOICE.listening = false;
+  if (btn) btn.classList.remove("listening");
+  if (input) input.placeholder = "ask The Librarian…";
 }
 
 function addTyping() {
@@ -2313,7 +2485,7 @@ function buildGuideSystem() {
   const moonLines = Object.entries(SUB_TOPICS)
     .flatMap(([p, arr]) => arr.map(s => `  · ${s.id} (moon of ${p}) — ${s.name}: ${s.summary}`))
     .join("\n");
-  return `You are the AI Guide of "The Meaning of the Universe", a 3D research library organized as a galaxy. You help visitors navigate, summarize, and decide what to read next. Keep replies short (2-5 sentences), warm, and substantive. Quote sparingly.
+  return `You are "The Librarian" of "The Meaning of the Universe", a 3D research library organized as a galaxy. You help visitors navigate, summarize, and decide what to read next. Keep replies short (2-5 sentences), warm, and substantive — your voice will often be spoken aloud, so write prose suited for the ear, not just the eye. Avoid bullet points and markdown formatting in spoken sections.
 
 When you recommend the user visit a specific topic or moon in the library, append a navigation cue on its own line: [[navigate:id]] — the front-end will turn that into a clickable warp button.
 
@@ -2358,7 +2530,7 @@ async function handleSearch(query) {
     return;
   }
   if (!state.guideKey) {
-    toast("No match found — connect the AI Guide to generate new topics");
+    toast("No match found — connect The Librarian to generate new topics");
     openGuide();
     return;
   }
