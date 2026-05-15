@@ -1039,7 +1039,35 @@ function openConclusion(entry) {
       body.appendChild(ul);
     }
   }
+  appendSourcesIfAny(body, entry.sources, "broader reading");
   document.getElementById("modal-conclusion").hidden = false;
+}
+
+/* Append a "Sources" section if the entry/document has any. */
+function appendSourcesIfAny(parent, sources, label) {
+  if (!Array.isArray(sources) || sources.length === 0) return;
+  const wrap = document.createElement("div");
+  wrap.className = "sources-section";
+  const h = document.createElement("h4");
+  h.textContent = label || "sources";
+  wrap.appendChild(h);
+  const list = document.createElement("ol");
+  list.className = "sources-list";
+  for (const s of sources) {
+    if (!s || !s.url) continue;
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = s.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = s.label || s.url;
+    li.appendChild(a);
+    list.appendChild(li);
+  }
+  if (list.childElementCount > 0) {
+    wrap.appendChild(list);
+    parent.appendChild(wrap);
+  }
 }
 
 function openDocuments(entry) {
@@ -1093,6 +1121,8 @@ function renderDocument(doc) {
     </div>
     <div class="doc-prose">${doc.prose.map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div>
   `;
+  // append sources section if the document has any
+  appendSourcesIfAny(reader, doc.sources, "sources");
   reader.scrollTop = 0;
   // wire the dynamically-rendered control set
   const btn = reader.querySelector("[data-tts-doc]");
@@ -2516,6 +2546,10 @@ Reply ONLY with valid JSON in this exact shape — no markdown fences, no prose:
     ],
     "planetTheme": {"type":"theme-name","params":{"hue":0.0,"accent":0.0,"density":1.0}},
     "connections": ["topic-id","topic-id"],
+    "sources": [
+      {"label":"Author Year — Title (Venue)","url":"https://arxiv.org/abs/..."},
+      {"label":"Author — Encyclopedia entry","url":"https://plato.stanford.edu/entries/..."}
+    ],
     "documents": [
       {
         "id":"slug",
@@ -2524,9 +2558,13 @@ Reply ONLY with valid JSON in this exact shape — no markdown fences, no prose:
         "author":"synthesis · 2026",
         "summary":"1-2 sentences",
         "findings":["finding","finding","finding"],
-        "prose":["paragraph one","paragraph two","paragraph three","paragraph four"]
+        "prose":["paragraph one","paragraph two","paragraph three","paragraph four"],
+        "sources":[
+          {"label":"Author Year — Title","url":"https://..."},
+          {"label":"...","url":"https://..."}
+        ]
       },
-      {"id":"slug2","type":"...","title":"...","author":"...","summary":"...","findings":["..."],"prose":["...","...","..."]}
+      {"id":"slug2","type":"...","title":"...","author":"...","summary":"...","findings":["..."],"prose":["...","...","..."],"sources":[{"label":"...","url":"..."}]}
     ]
   }
 }
@@ -2534,10 +2572,51 @@ Reply ONLY with valid JSON in this exact shape — no markdown fences, no prose:
 CRITICAL — CONNECTIONS:
 For new TOP-LEVEL topics (parent = null), you MUST include a "connections" array with 2-4 ids of existing top-level topics this new topic genuinely connects to. Choose topics with real intellectual adjacency, not superficial keyword overlap. Empty array is acceptable only if the topic is truly isolated, which should be very rare. Moons (parent != null) do not need a "connections" array.
 
+CRITICAL — SOURCES:
+Every entity AND every document MUST include a "sources" array of real URLs. Use the papers provided in the user message AND any additional sources you find via web_search. Each source is { "label": "...", "url": "https://..." } where label is a short human-readable citation (Author Year — Title, or Encyclopedia entry, or Lecture/Talk title). URLs must be real, working, and direct — prefer arXiv abstract pages, journal/PubMed pages with open-access PDF, Stanford Encyclopedia of Philosophy entries, IEP entries, university course pages, established institutional publications. Avoid Wikipedia as a primary source (it can be one entry but not the only one). 3-6 sources per document, 4-8 at the topic level. Do not invent URLs — only use URLs from the provided papers or from your web_search results.
+
 Make it substantive, intellectually serious, calibrated. Match the library's tone: distillation-focused, neither breathless nor dismissive. Two documents. 3-4 paragraphs each in prose.`;
 }
 
+/* Pre-fetch papers from Semantic Scholar to ground Opus's generation in real sources. */
+async function fetchSemanticScholar(query) {
+  try {
+    const fields = "title,abstract,authors.name,year,url,openAccessPdf,venue";
+    const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=8&fields=${fields}`;
+    const r = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (!r.ok) return [];
+    const data = await r.json();
+    return (data.data || []).filter(p => p && p.title);
+  } catch (e) {
+    return [];
+  }
+}
+
+function formatPapersForPrompt(papers) {
+  if (!papers || papers.length === 0) return "";
+  const lines = papers.slice(0, 8).map((p, i) => {
+    const authors = (p.authors || []).slice(0, 3).map(a => a.name).join(", ");
+    const more = (p.authors || []).length > 3 ? " et al." : "";
+    const url = p.openAccessPdf?.url || p.url || "";
+    const venue = p.venue ? ` · ${p.venue}` : "";
+    const yr = p.year ? ` (${p.year})` : "";
+    const abs = (p.abstract || "").trim().slice(0, 500);
+    return `[P${i+1}] "${p.title}" — ${authors}${more}${yr}${venue}\nURL: ${url}${abs ? "\nAbstract: " + abs : ""}`;
+  });
+  return "Real papers fetched from Semantic Scholar (use these as grounding; cite them in the 'sources' fields):\n\n" + lines.join("\n\n");
+}
+
 async function callClaudeForGeneration(query) {
+  // Pre-fetch real papers in parallel with no-op (so we don't block long if rate-limited)
+  const papers = await Promise.race([
+    fetchSemanticScholar(query),
+    new Promise(r => setTimeout(() => r([]), 6000)),
+  ]);
+  const paperContext = formatPapersForPrompt(papers);
+  const userMessage = paperContext
+    ? `Search query: "${query}"\n\n${paperContext}\n\nNow use web_search if you need additional sources, then output the full JSON entry. Every document MUST include a 'sources' array of 3-6 real URLs (paper, article, encyclopedia, lecture).`
+    : `Search query: "${query}"\n\nUse web_search to find authoritative sources, then output the full JSON entry. Every document MUST include a 'sources' array of 3-6 real URLs.`;
+
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -2548,9 +2627,10 @@ async function callClaudeForGeneration(query) {
     },
     body: JSON.stringify({
       model: "claude-opus-4-7",
-      max_tokens: 8000,
+      max_tokens: 12000,
       system: buildGenerationSystem(),
-      messages: [{ role: "user", content: `Search query: "${query}"\n\nGenerate the JSON now.` }],
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+      messages: [{ role: "user", content: userMessage }],
     }),
   });
   if (!resp.ok) {
@@ -2558,15 +2638,23 @@ async function callClaudeForGeneration(query) {
     throw new Error(`API ${resp.status}: ${txt.slice(0, 200)}`);
   }
   const data = await resp.json();
-  let text = (data.content || []).map(b => b.text).join("\n").trim();
+  // multi-block response: filter to text blocks only and concatenate
+  let text = (data.content || [])
+    .filter(b => b.type === "text" && typeof b.text === "string")
+    .map(b => b.text)
+    .join("\n")
+    .trim();
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-  // robustness: extract the first {...} block
+  // robustness: extract the largest {...} block
   const first = text.indexOf("{");
   const last = text.lastIndexOf("}");
   if (first >= 0 && last > first) text = text.slice(first, last + 1);
   let parsed;
   try { parsed = JSON.parse(text); }
-  catch (e) { throw new Error("AI returned malformed JSON"); }
+  catch (e) {
+    console.error("[generation] could not parse JSON. Raw text follows:\n", text);
+    throw new Error("AI returned malformed JSON");
+  }
   if (!parsed.entity?.id || !parsed.entity?.name) throw new Error("AI returned incomplete entry");
   if (parsed.parent && !topicById(parsed.parent)) parsed.parent = null;
   if (parsed.parent && !parsed.entity.orbit) {
