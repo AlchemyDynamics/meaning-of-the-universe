@@ -2085,6 +2085,16 @@ function setupSettingsPanel() {
   });
   // preview & reset
   document.getElementById("previewVoice").addEventListener("click", ttsPreview);
+  document.getElementById("resetWindows").addEventListener("click", () => {
+    localStorage.removeItem("motu.win.guide");
+    localStorage.removeItem("motu.win.planet");
+    const guide = document.getElementById("guide");
+    const planet = document.getElementById("planetPanel");
+    if (guide) resetDragPos(guide);
+    if (planet) resetDragPos(planet);
+    toast("window positions reset");
+  });
+
   document.getElementById("resetVoice").addEventListener("click", () => {
     TTS.rate = 1.0; TTS.pitch = 1.0;
     localStorage.removeItem("motu.tts.rate");
@@ -2181,60 +2191,99 @@ function attachUI() {
 }
 
 /**
- * Make a window draggable by a handle. Position persists in localStorage.
- * Switches the element from right/bottom CSS positioning to absolute left/top
- * on first drag, so the initial CSS lays it out and the user can then move it.
+ * Make a window draggable. Position persists in localStorage.
+ * Drag zones: the explicit header handle, plus a ~24px border around
+ * the panel (every edge and corner). Interior is left alone for text
+ * selection and button presses. Auto-recovers if a saved position
+ * pushes the panel off-screen.
  */
-function setupDraggable(panel, handle, storageKey) {
-  if (!panel || !handle) return;
+const DRAG_EDGE = 24;
 
-  // Restore persisted position
+function setupDraggable(panel, handle, storageKey) {
+  if (!panel) return;
+
+  // Restore persisted position — but only if it's still on-screen.
   const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
   if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
-    applyDragPos(panel, saved.left, saved.top);
+    const safeTop  = saved.top  >= -8 && saved.top  <= window.innerHeight - 30;
+    const safeLeft = saved.left >= -400 && saved.left <= window.innerWidth - 80;
+    if (safeTop && safeLeft) {
+      applyDragPos(panel, saved.left, saved.top);
+    } else {
+      // stuck offscreen — drop the bad position so CSS defaults apply
+      localStorage.removeItem(storageKey);
+      resetDragPos(panel);
+    }
   }
 
   let dragging = false;
   let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let pid = null;
 
-  handle.addEventListener("pointerdown", (e) => {
-    // ignore drags initiated on inner controls (close buttons, etc.)
-    if (e.target.closest("button") && !e.target.closest("#planetDragHandle, #guideDragHandle")) return;
-    dragging = true;
-    handle.setPointerCapture(e.pointerId);
-    panel.classList.add("dragging");
+  function inExplicitHandle(target) {
+    return handle && handle.contains(target);
+  }
+  function nearEdge(rect, e) {
+    const x = e.clientX, y = e.clientY;
+    return (x - rect.left) < DRAG_EDGE
+        || (rect.right - x) < DRAG_EDGE
+        || (y - rect.top) < DRAG_EDGE
+        || (rect.bottom - y) < DRAG_EDGE;
+  }
+  function isInteractive(target) {
+    return target.closest("button, input, textarea, select, a, label");
+  }
+
+  panel.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
     const rect = panel.getBoundingClientRect();
+    const inHandle = inExplicitHandle(e.target);
+    const onEdge = nearEdge(rect, e);
+    if (!inHandle && !onEdge) return;          // interior → don't drag
+    if (!inHandle && isInteractive(e.target)) return; // edge but on a button → let it click
+    dragging = true;
+    pid = e.pointerId;
+    panel.setPointerCapture(pid);
+    panel.classList.add("dragging");
     startX = e.clientX; startY = e.clientY;
     startLeft = rect.left; startTop = rect.top;
-    // freeze initial position via top/left and remove right/bottom CSS pinning
     applyDragPos(panel, startLeft, startTop);
     e.preventDefault();
   });
 
-  handle.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
+  panel.addEventListener("pointermove", (e) => {
+    if (!dragging || e.pointerId !== pid) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     let nx = startLeft + dx;
     let ny = startTop + dy;
-    // clamp to viewport (keep at least 80px of handle visible)
     const rect = panel.getBoundingClientRect();
-    const w = rect.width, h = rect.height;
+    const w = rect.width;
+    // clamp generously — at least 80px of width and 30px of height remain reachable
     nx = Math.max(-w + 80, Math.min(window.innerWidth - 80, nx));
-    ny = Math.max(0, Math.min(window.innerHeight - 40, ny));
+    ny = Math.max(0, Math.min(window.innerHeight - 30, ny));
     applyDragPos(panel, nx, ny);
   });
 
   const endDrag = (e) => {
     if (!dragging) return;
     dragging = false;
-    handle.releasePointerCapture(e.pointerId);
+    try { panel.releasePointerCapture(pid); } catch (_) {}
+    pid = null;
     panel.classList.remove("dragging");
     const rect = panel.getBoundingClientRect();
     localStorage.setItem(storageKey, JSON.stringify({ left: rect.left, top: rect.top }));
   };
-  handle.addEventListener("pointerup", endDrag);
-  handle.addEventListener("pointercancel", endDrag);
+  panel.addEventListener("pointerup", endDrag);
+  panel.addEventListener("pointercancel", endDrag);
+}
+
+function resetDragPos(panel) {
+  panel.style.left = "";
+  panel.style.top = "";
+  panel.style.right = "";
+  panel.style.bottom = "";
+  panel.style.transform = "";
 }
 
 function applyDragPos(panel, left, top) {
