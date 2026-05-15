@@ -2387,7 +2387,7 @@ async function callClaudeForGeneration(query) {
       "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
+      model: "claude-opus-4-7",
       max_tokens: 8000,
       system: buildGenerationSystem(),
       messages: [{ role: "user", content: `Search query: "${query}"\n\nGenerate the JSON now.` }],
@@ -2512,8 +2512,8 @@ async function callClaude(userText) {
   const messages = [...turns];
 
   const body = {
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 600,
+    model: "claude-opus-4-7",
+    max_tokens: 800,
     system: buildGuideSystem() + "\n\n" + context,
     messages: messages,
   };
