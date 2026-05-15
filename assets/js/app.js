@@ -2439,21 +2439,24 @@ async function generateAndAddEntity(query) {
       document.getElementById("topicCount").textContent = TOPICS.length;
       const docCount = TOPICS.reduce((a, t) => a + (t.documents?.length || 0), 0);
       document.getElementById("docCount").textContent = docCount;
-      hideGenerationOverlay();
 
-      // bring the user back to galaxy if they're on a planet, so the new star is visible
-      if (state.mode === "planet" || state.mode === "moon") returnToGalaxy();
-
-      // give the camera a beat to settle before opening the review modal
-      await new Promise(r => setTimeout(r, 600));
-      await reviewConnections(topic, result.entity.connections || []);
-      // brief moment so user can see the new edges form
-      await new Promise(r => setTimeout(r, 700));
+      // Auto-apply the connections Opus suggested — no review interrupt.
+      const suggested = (result.entity.connections || [])
+        .filter(cid => topicById(cid) && cid !== topic.id);
+      let added = 0;
+      for (const cid of suggested) {
+        if (registerGeneratedEdge(topic.id, cid)) {
+          persistEdge(topic.id, cid);
+          added++;
+        }
+      }
+      if (added > 0) rebuildEdges();
 
       showGenerationOverlay(`Navigating to ${topic.name}`, "warping toward a new star…");
       setTimeout(() => {
         hideGenerationOverlay();
-        setTimeout(() => enterPlanet(topic.id), 100);
+        if (state.mode === "planet" || state.mode === "moon") returnToGalaxy();
+        setTimeout(() => enterPlanet(topic.id), state.mode === "galaxy" ? 100 : 800);
       }, 900);
     }
   } catch (err) {
@@ -2660,87 +2663,6 @@ function rebuildEdges() {
   buildEdges();
   if (state.mode !== "galaxy") state.edgeLines.visible = false;
   else state.edgeLines.visible = state.edgesVisible;
-}
-
-/* ============================================================
-   Connection review — runs after Claude generates a new top-level
-   topic. User confirms which adjacencies to commit before warp.
-   ============================================================ */
-function reviewConnections(topic, suggestedIds) {
-  return new Promise((resolve) => {
-    const validSuggested = (suggestedIds || [])
-      .filter(id => topicById(id) && id !== topic.id);
-    const suggestedSet = new Set(validSuggested);
-
-    document.getElementById("connReviewTitle").textContent = topic.name;
-    const list = document.getElementById("connChecklist");
-    list.innerHTML = "";
-
-    // ordering: suggested first, then the rest alphabetically
-    const others = TOPICS.filter(t => t.id !== topic.id && !suggestedSet.has(t.id))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const ordered = [...validSuggested.map(topicById), ...others];
-
-    const updateCount = () => {
-      const checked = list.querySelectorAll("input[type='checkbox']:checked").length;
-      document.getElementById("connReviewCount").textContent = checked;
-      document.getElementById("connReviewPlural").textContent = checked === 1 ? "" : "s";
-    };
-
-    for (const other of ordered) {
-      const row = document.createElement("label");
-      row.className = "conn-check-row" + (suggestedSet.has(other.id) ? " suggested" : "");
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.value = other.id;
-      cb.checked = suggestedSet.has(other.id);
-      cb.addEventListener("change", updateCount);
-      const dot = document.createElement("span");
-      dot.className = "conn-check-dot";
-      dot.style.background = other.color;
-      dot.style.color = other.color;
-      const name = document.createElement("span");
-      name.className = "conn-check-name";
-      name.textContent = other.name;
-      row.appendChild(cb);
-      row.appendChild(dot);
-      row.appendChild(name);
-      if (suggestedSet.has(other.id)) {
-        const tag = document.createElement("span");
-        tag.className = "conn-check-suggested";
-        tag.textContent = "suggested";
-        row.appendChild(tag);
-      }
-      list.appendChild(row);
-    }
-    updateCount();
-
-    const finish = (commitEdges) => {
-      if (commitEdges) {
-        const checked = [...list.querySelectorAll("input[type='checkbox']:checked")];
-        for (const cb of checked) {
-          if (registerGeneratedEdge(topic.id, cb.value)) {
-            persistEdge(topic.id, cb.value);
-          }
-        }
-        rebuildEdges();
-      }
-      document.getElementById("modal-conn-review").hidden = true;
-      // detach handlers to keep them one-shot
-      confirmBtn.removeEventListener("click", onConfirm);
-      skipBtn.removeEventListener("click", onSkip);
-      resolve();
-    };
-    const onConfirm = () => finish(true);
-    const onSkip = () => finish(false);
-
-    const confirmBtn = document.getElementById("connReviewConfirm");
-    const skipBtn = document.getElementById("connReviewSkip");
-    confirmBtn.addEventListener("click", onConfirm);
-    skipBtn.addEventListener("click", onSkip);
-
-    document.getElementById("modal-conn-review").hidden = false;
-  });
 }
 
 function persistTopic(topic) {
