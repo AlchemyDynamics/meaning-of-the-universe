@@ -120,11 +120,16 @@
       <div class="modal-head">
         <div class="modal-eyebrow">distilled conclusion</div>
         <h3 id="conclusionTitle">—</h3>
-        <button class="tts-btn" data-tts-source="conclusion" title="Read aloud">
-          <svg class="tts-icon-play" viewBox="0 0 24 24" width="14" height="14"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
-          <svg class="tts-icon-stop" viewBox="0 0 24 24" width="14" height="14" hidden><path d="M6 6h12v12H6z" fill="currentColor"/></svg>
-          <span class="tts-label">listen</span>
-        </button>
+        <div class="tts-controls">
+          <button class="tts-btn" data-tts-source="conclusion" title="Read aloud">
+            <svg class="tts-icon-play" viewBox="0 0 24 24" width="14" height="14"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+            <svg class="tts-icon-pause" viewBox="0 0 24 24" width="14" height="14" hidden><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>
+            <span class="tts-label">listen</span>
+          </button>
+          <button class="tts-stop" data-tts-stop title="Stop" hidden>
+            <svg viewBox="0 0 24 24" width="12" height="12"><path d="M6 6h12v12H6z" fill="currentColor"/></svg>
+          </button>
+        </div>
         <button class="modal-close" data-close-modal>✕</button>
       </div>
       <div class="modal-body">

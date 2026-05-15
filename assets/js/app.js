@@ -1056,11 +1056,16 @@ function renderDocument(doc) {
   reader.innerHTML = `
     <div class="doc-head-row">
       <h4>${escapeHtml(doc.title)}</h4>
-      <button class="tts-btn" data-tts-doc title="Read aloud">
-        <svg class="tts-icon-play" viewBox="0 0 24 24" width="14" height="14"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
-        <svg class="tts-icon-stop" viewBox="0 0 24 24" width="14" height="14" hidden><path d="M6 6h12v12H6z" fill="currentColor"/></svg>
-        <span class="tts-label">listen</span>
-      </button>
+      <div class="tts-controls">
+        <button class="tts-btn" data-tts-doc title="Read aloud">
+          <svg class="tts-icon-play" viewBox="0 0 24 24" width="14" height="14"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+          <svg class="tts-icon-pause" viewBox="0 0 24 24" width="14" height="14" hidden><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>
+          <span class="tts-label">listen</span>
+        </button>
+        <button class="tts-stop" data-tts-stop title="Stop" hidden>
+          <svg viewBox="0 0 24 24" width="12" height="12"><path d="M6 6h12v12H6z" fill="currentColor"/></svg>
+        </button>
+      </div>
     </div>
     <div class="doc-meta">${escapeHtml(doc.author)} · ${escapeHtml(doc.type)}</div>
     <div class="doc-summary">${escapeHtml(doc.summary)}</div>
@@ -1071,14 +1076,13 @@ function renderDocument(doc) {
     <div class="doc-prose">${doc.prose.map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div>
   `;
   reader.scrollTop = 0;
-  // wire the dynamically-rendered button
+  // wire the dynamically-rendered control set
   const btn = reader.querySelector("[data-tts-doc]");
   if (btn) {
-    btn.addEventListener("click", () => {
-      if (btn.classList.contains("playing")) { stopSpeech(); return; }
-      startSpeech(entryToReadable(doc, "document"), btn);
-    });
+    btn.addEventListener("click", () => handleTTSButtonClick(btn, () => entryToReadable(doc, "document")));
   }
+  const stopBtn = reader.querySelector("[data-tts-stop]");
+  if (stopBtn) stopBtn.addEventListener("click", () => stopSpeech());
 }
 
 function openConnections(entry) {
@@ -1186,6 +1190,7 @@ const TTS = {
   queue: [],
   index: 0,
   playing: false,
+  paused: false,
   currentBtn: null,
   // elevenlabs audio playback
   audio: null,               // HTMLAudioElement currently playing
@@ -1304,8 +1309,10 @@ function populateVoiceSelect() {
     sel.appendChild(og);
   }
 
-  // Browser voices
-  if (TTS.voices.length > 0) {
+  // Browser voices — hidden once ElevenLabs voices are loaded
+  // (kept visible as a fallback while EL voices are still loading)
+  const showBrowser = !TTS.elKey || TTS.elVoices.length === 0;
+  if (showBrowser && TTS.voices.length > 0) {
     const og = document.createElement("optgroup");
     og.label = "Browser (built-in)";
     for (const v of TTS.voices) {
@@ -1366,6 +1373,7 @@ function applyVoiceSelection(value) {
     }
   }
   localStorage.setItem("motu.tts.unifiedKey", value);
+  updateSettingsVisibility();
   // update hint
   const hint = document.getElementById("voiceHint");
   if (hint) {
@@ -1376,6 +1384,12 @@ function applyVoiceSelection(value) {
       hint.textContent = `${TTS.voices.length} browser voices · current: ${TTS.selected.name}`;
     }
   }
+}
+
+// Show/hide setting rows that only apply to one engine.
+function updateSettingsVisibility() {
+  const pitchRow = document.getElementById("pitchRange")?.closest(".setting-row");
+  if (pitchRow) pitchRow.hidden = (TTS.engine === "elevenlabs");
 }
 
 /* split a long text into utterance-sized chunks (paragraphs / sentences) */
@@ -1457,8 +1471,9 @@ function startSpeechBrowser(text, btn) {
   });
   TTS.index = 0;
   TTS.playing = true;
+  TTS.paused = false;
   TTS.currentBtn = btn;
-  if (btn) btn.classList.add("playing");
+  if (btn) { btn.classList.add("playing"); setBtnLabel(btn, "pause"); showStopFor(btn); }
   playNextChunk();
 }
 
@@ -1473,8 +1488,9 @@ async function startSpeechElevenLabs(text, btn) {
     return;
   }
   TTS.playing = true;
+  TTS.paused = false;
   TTS.currentBtn = btn;
-  if (btn) btn.classList.add("playing");
+  if (btn) { btn.classList.add("playing"); showStopFor(btn); }
   // visual cue while we fetch
   if (btn) {
     const label = btn.querySelector(".tts-label");
@@ -1489,6 +1505,7 @@ async function startSpeechElevenLabs(text, btn) {
     // Fire first request; play once it arrives. Pre-fetch subsequent in background.
     TTS.audioParts[0] = await elFetchAudio(chunks[0], voiceId, TTS.pendingAbort.signal);
     restoreBtnLabel(btn);
+    setBtnLabel(btn, "pause");
     playElevenPart(0);
     // prefetch the rest serially (avoid hammering free-tier rate limits)
     for (let i = 1; i < chunks.length; i++) {
@@ -1606,6 +1623,7 @@ function playNextChunk() {
 
 function stopSpeech() {
   TTS.playing = false;
+  TTS.paused = false;
   TTS.queue = [];
   TTS.index = 0;
   if ("speechSynthesis" in window) speechSynthesis.cancel();
@@ -1617,9 +1635,54 @@ function stopSpeech() {
   TTS.audioPartIndex = 0;
   if (TTS.currentBtn) {
     TTS.currentBtn.classList.remove("playing");
+    TTS.currentBtn.classList.remove("paused");
+    setBtnLabel(TTS.currentBtn, "listen");
     restoreBtnLabel(TTS.currentBtn);
+    // hide the stop pill near this button
+    const sibling = TTS.currentBtn.parentElement?.querySelector("[data-tts-stop]");
+    if (sibling) sibling.hidden = true;
   }
   TTS.currentBtn = null;
+}
+
+function pauseSpeech() {
+  if (!TTS.playing || TTS.paused) return;
+  TTS.paused = true;
+  if (TTS.engine === "browser") {
+    if ("speechSynthesis" in window) speechSynthesis.pause();
+  } else if (TTS.engine === "elevenlabs") {
+    if (TTS.audio) { try { TTS.audio.pause(); } catch(e){} }
+  }
+  if (TTS.currentBtn) {
+    TTS.currentBtn.classList.remove("playing");
+    TTS.currentBtn.classList.add("paused");
+    setBtnLabel(TTS.currentBtn, "resume");
+  }
+}
+
+function resumeSpeech() {
+  if (!TTS.playing || !TTS.paused) return;
+  TTS.paused = false;
+  if (TTS.engine === "browser") {
+    if ("speechSynthesis" in window) speechSynthesis.resume();
+  } else if (TTS.engine === "elevenlabs") {
+    if (TTS.audio) { TTS.audio.play().catch(()=>{}); }
+  }
+  if (TTS.currentBtn) {
+    TTS.currentBtn.classList.remove("paused");
+    TTS.currentBtn.classList.add("playing");
+    setBtnLabel(TTS.currentBtn, "pause");
+  }
+}
+
+function setBtnLabel(btn, txt) {
+  const l = btn?.querySelector(".tts-label");
+  if (l) l.textContent = txt;
+}
+
+function showStopFor(btn) {
+  const sibling = btn?.parentElement?.querySelector("[data-tts-stop]");
+  if (sibling) sibling.hidden = false;
 }
 
 /* ============================================================
@@ -1753,15 +1816,28 @@ function ttsPreview() {
 
 function bindTTSButtons() {
   document.querySelectorAll(".tts-btn[data-tts-source]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const source = btn.dataset.ttsSource;
-      // toggle off if already playing this button
-      if (btn.classList.contains("playing")) { stopSpeech(); return; }
+    btn.addEventListener("click", () => handleTTSButtonClick(btn, () => {
       const entry = currentEntry();
-      if (!entry) return;
-      if (source === "conclusion") startSpeech(entryToReadable(entry, "conclusion"), btn);
-    });
+      if (!entry) return null;
+      return entryToReadable(entry, btn.dataset.ttsSource);
+    }));
   });
+  // stop buttons live next to the play buttons
+  document.querySelectorAll("[data-tts-stop]").forEach(stopBtn => {
+    stopBtn.addEventListener("click", () => stopSpeech());
+  });
+}
+
+// Centralised click handler — same button cycles play → pause → resume.
+function handleTTSButtonClick(btn, textProvider) {
+  if (TTS.currentBtn === btn) {
+    if (TTS.paused) { resumeSpeech(); return; }
+    if (TTS.playing) { pauseSpeech(); return; }
+  }
+  // either a fresh start, or a switch to a different entry — stop any prior speech first
+  const text = textProvider();
+  if (!text) return;
+  startSpeech(text, btn);
 }
 
 function setupSettingsPanel() {

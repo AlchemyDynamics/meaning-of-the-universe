@@ -379,10 +379,29 @@ em { color: var(--ink-0); font-style: italic; }
   50%      { box-shadow: 0 0 0 6px rgba(167,139,250,0); }
 }
 .tts-btn svg { display: block; }
-.tts-btn .tts-icon-play { color: var(--accent); }
-.tts-btn .tts-icon-stop { color: var(--accent); }
+.tts-btn .tts-icon-play, .tts-btn .tts-icon-pause { color: var(--accent); }
 .tts-btn.playing .tts-icon-play { display: none; }
-.tts-btn.playing .tts-icon-stop { display: block; }
+.tts-btn.playing .tts-icon-pause { display: block; }
+.tts-btn.paused .tts-icon-play { display: block; }
+.tts-btn.paused .tts-icon-pause { display: none; }
+.tts-btn.paused {
+  background: rgba(167,139,250,0.18);
+  border-color: var(--line-2);
+  color: var(--ink-0);
+  animation: none;
+}
+
+.tts-controls { display: inline-flex; align-items: center; gap: 4px; }
+.tts-stop {
+  width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: rgba(167,139,250,0.10);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tts-stop:hover { background: rgba(167,139,250,0.22); color: var(--ink-0); border-color: var(--line-2); }
 
 /* ============================================================
    Settings panel
