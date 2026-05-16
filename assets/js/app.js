@@ -538,6 +538,18 @@ function makeTopicNode(topic) {
   const colorObj = new THREE.Color(topic.color);
   const size = topic.size || 1.0;
 
+  // invisible hit-target — wider click box so the corona is clickable
+  const hitGeo = new THREE.SphereGeometry(3.0 * size, 14, 14);
+  const hitMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    depthTest: false,
+  });
+  const hit = new THREE.Mesh(hitGeo, hitMat);
+  hit.renderOrder = -1;
+
   // soft outer corona (slowly breathing)
   const coronaMat = new THREE.SpriteMaterial({
     map: makeGlowTexture(colorObj),
@@ -575,9 +587,9 @@ function makeTopicNode(topic) {
   const ring = new THREE.Mesh(ringGeo, ringMat);
 
   const node = new THREE.Group();
-  node.add(corona, halo, core, ring);
+  node.add(hit, corona, halo, core, ring);
   node.position.set(...topic.position);
-  node.userData = { topicId: topic.id, core, halo, ring, corona, baseColor: colorObj.clone(), size };
+  node.userData = { topicId: topic.id, core, halo, ring, corona, hit, baseColor: colorObj.clone(), size };
   return node;
 }
 
@@ -799,9 +811,15 @@ const planetFragment = `
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
   }
 
-  // ─── theme colorers ──────────────────────────────────────────────
+  // Baseline drifting cloud layer — every planet has some weather.
+  // Returns a soft additive tint based on a wide noise field that drifts.
+  float clouds_field(vec3 p, float scale, float speed) {
+    return pow(fbm(p * scale + vec3(0.0, uTime * speed, 0.0)), 1.4);
+  }
+
+  // ─── theme colorers (each with distinguishing weather) ───────────
   vec3 theme_grid(vec3 p) {
-    // simulation theory — wireframe cubes with glitch
+    // SIMULATION THEORY — wireframe cubes + data cascades
     vec3 q = p * 4.0;
     vec3 g = abs(fract(q + uTime * 0.02) - 0.5);
     float line = step(0.46, max(max(g.x, g.y), g.z));
@@ -809,9 +827,14 @@ const planetFragment = `
     vec3 base = hsv2rgb(vec3(uHue, 0.4, 0.06));
     vec3 grid = hsv2rgb(vec3(uHue, 0.6, 0.9));
     vec3 hot  = hsv2rgb(vec3(uAccent, 0.8, 1.2));
-    return base + line * grid * (0.5 + 0.5 * fbm(q*0.3)) + glitch * hot * 0.6;
+    vec3 col = base + line * grid * (0.5 + 0.5 * fbm(q*0.3)) + glitch * hot * 0.6;
+    // weather: vertical data cascades (rain of bright bits)
+    float cascade = step(0.94, hash(floor(q * vec3(6.0, 3.0, 6.0) + vec3(0.0, uTime * 5.0, 0.0))));
+    col += vec3(0.3, 0.95, 1.0) * cascade * 0.7;
+    return col;
   }
   vec3 theme_plasma(vec3 p) {
+    // PLASMA DYNAMICS — turbulent flares + solar arcs
     vec3 q = p * 2.3;
     float n = fbm(q + vec3(0.0, uTime * 0.18, 0.0));
     float flare = pow(fbm(q*2.2 + vec3(uTime*0.5)), 3.0);
@@ -820,10 +843,13 @@ const planetFragment = `
     vec3 white = vec3(1.0, 0.95, 0.85);
     vec3 col = mix(cool, hot, n);
     col += white * flare * 0.6;
+    // weather: prominence arcs sweeping the surface
+    float arc = pow(max(0.0, sin(p.y * 14.0 + uTime * 0.7) * sin(atan(p.z, p.x) * 6.0)), 8.0);
+    col += vec3(1.0, 0.55, 0.18) * arc * 0.6;
     return col;
   }
   vec3 theme_mandala(vec3 p) {
-    // radial sacred geometry — based on spherical coords
+    // WORLD RELIGIONS — radial sacred geometry + ritual pulse rings
     float theta = atan(p.z, p.x);
     float phi = acos(p.y / max(length(p), 0.001));
     float r1 = cos(theta * 6.0 + uTime * 0.15) * 0.5 + 0.5;
@@ -833,10 +859,15 @@ const planetFragment = `
     vec3 deep  = hsv2rgb(vec3(0.74, 0.7, 0.15));
     vec3 gold  = hsv2rgb(vec3(uHue, 0.85, 1.1));
     vec3 ivory = hsv2rgb(vec3(0.12, 0.25, 1.2));
-    return mix(deep, gold, patt) + ivory * pow(patt, 6.0) * 0.4;
+    vec3 col = mix(deep, gold, patt) + ivory * pow(patt, 6.0) * 0.4;
+    // weather: concentric pulse rings emanating from poles
+    float r = length(p.xz);
+    float pulse = sin(r * 9.0 - uTime * 1.4);
+    col += ivory * pow(max(0.0, pulse), 6.0) * 0.45;
+    return col;
   }
   vec3 theme_flow(vec3 p) {
-    // economics — particle streams / current
+    // ECONOMICS — particle streams + cross-current eddies
     vec3 q = p * 3.0;
     float streamA = sin(q.x * 5.0 + q.y * 3.0 + uTime * 0.6);
     float streamB = sin(q.z * 4.0 - q.y * 5.0 + uTime * 0.5);
@@ -844,10 +875,16 @@ const planetFragment = `
     float pulse = fbm(q + uTime * 0.2);
     vec3 base = hsv2rgb(vec3(uHue, 0.6, 0.1 + 0.3 * pulse));
     vec3 stream = hsv2rgb(vec3(uAccent, 0.7, 1.4));
-    return base + stream * lines;
+    vec3 col = base + stream * lines;
+    // weather: occasional storm eddy — bright vortex spot
+    vec3 eddyCenter = vec3(cos(uTime * 0.18) * 0.7, sin(uTime * 0.21) * 0.4, sin(uTime * 0.18) * 0.7);
+    float eddyD = distance(p, eddyCenter);
+    float eddy = smoothstep(0.30, 0.05, eddyD);
+    col += hsv2rgb(vec3(uAccent + 0.1, 0.8, 1.2)) * eddy * 0.55;
+    return col;
   }
   vec3 theme_crystal(vec3 p) {
-    // esoterica — faceted with sigil glow
+    // ESOTERICA — faceted with sigil glow + sparkle weather
     vec3 q = p * 2.4;
     vec3 fl = floor(q + 0.5);
     float facet = vnoise(fl);
@@ -856,30 +893,44 @@ const planetFragment = `
     vec3 deep = hsv2rgb(vec3(uHue, 0.7, 0.08 + 0.18 * facet));
     vec3 silver = vec3(0.85, 0.82, 1.0);
     vec3 violet = hsv2rgb(vec3(uHue, 0.9, 1.3));
-    return deep + silver * edges * 0.4 + violet * sigil * 0.7;
+    vec3 col = deep + silver * edges * 0.4 + violet * sigil * 0.7;
+    // weather: sparkle flickers (random bright points)
+    float spark = pow(hash(floor(p * 7.0 + uTime * 2.5)), 9.0);
+    col += silver * spark * 2.4;
+    return col;
   }
   vec3 theme_gas(vec3 p) {
-    // astrophysics — banded gas giant
+    // ASTROPHYSICS — banded gas giant + persistent storm spot
     float band = sin(p.y * uParamA + fbm(p * 1.8 + uTime * 0.05) * 1.5);
     float fine = fbm(p * 6.0 + uTime * 0.1) * 0.3;
     vec3 deep = hsv2rgb(vec3(uHue, 0.6, 0.25));
     vec3 light = hsv2rgb(vec3(uHue + 0.05, 0.3, 1.0));
     vec3 storm = hsv2rgb(vec3(uAccent, 0.7, 0.9));
     float storms = smoothstep(0.7, 0.95, fbm(p*3.0 - uTime*0.07));
-    return mix(deep, light, smoothstep(-0.4, 0.4, band) + fine) + storm * storms * 0.4;
+    vec3 col = mix(deep, light, smoothstep(-0.4, 0.4, band) + fine) + storm * storms * 0.4;
+    // weather: a Great Red Spot style oval that drifts in longitude
+    vec3 spotC = vec3(cos(uTime * 0.06) * 0.85, -0.35, sin(uTime * 0.06) * 0.85);
+    float spotD = distance(p, spotC);
+    float spot = smoothstep(0.32, 0.08, spotD);
+    col += hsv2rgb(vec3(uAccent - 0.05, 0.85, 1.0)) * spot * 0.55;
+    return col;
   }
   vec3 theme_cmb(vec3 p) {
-    // cosmology — cosmic web noise
+    // COSMOLOGY — cosmic web + slow expansion pulses
     float web = fbm(p * 4.0);
     float net = pow(fbm(p * 8.0 + 7.3), 2.5);
     float voids = smoothstep(0.3, 0.5, web);
     vec3 cold = hsv2rgb(vec3(0.63, 0.7, 0.04));
     vec3 warm = hsv2rgb(vec3(0.03, 0.7, 0.45));
     vec3 nodes = hsv2rgb(vec3(uHue, 0.6, 1.1));
-    return mix(cold, warm, voids) + nodes * net * 0.5;
+    vec3 col = mix(cold, warm, voids) + nodes * net * 0.5;
+    // weather: web-pulse that breathes with cosmic expansion
+    float breath = 0.5 + 0.5 * sin(uTime * 0.35);
+    col += nodes * pow(net, 0.6) * breath * 0.35;
+    return col;
   }
   vec3 theme_circuit(vec3 p) {
-    // computation — circuit-board, data pulses
+    // COMPUTATION — circuit-board + traveling data signals
     vec3 q = p * 5.0;
     float gridX = step(0.45, abs(fract(q.x) - 0.5));
     float gridY = step(0.45, abs(fract(q.y) - 0.5));
@@ -889,7 +940,11 @@ const planetFragment = `
     vec3 base  = hsv2rgb(vec3(0.55, 0.7, 0.05));
     vec3 trace = hsv2rgb(vec3(uHue, 0.7, 0.9));
     vec3 spark = hsv2rgb(vec3(uAccent, 0.5, 1.5));
-    return base + trace * lines * 0.6 + spark * pulse * 0.8;
+    vec3 col = base + trace * lines * 0.6 + spark * pulse * 0.8;
+    // weather: traveling data signal — a brighter pulse moving along grid lines
+    float wave = step(0.92, fract(q.x * 0.3 - uTime * 0.7) * lines);
+    col += spark * wave * 1.1;
+    return col;
   }
 
   void main() {
@@ -1115,7 +1170,7 @@ function returnToPlanet() {
 
   // re-center on planet
   const dir = new THREE.Vector3(1, 0.3, 1.6).normalize();
-  state.cameraTargetPos = dir.multiplyScalar(11);
+  state.cameraTargetPos = dir.multiplyScalar(12.1);  // pull back ~10% so planet fits the view better
   state.cameraTargetLook = new THREE.Vector3(0, 0, 0);
   state.mode = "transit";
   state.afterTransit = "planet";
@@ -1349,11 +1404,14 @@ function startLoop() {
     // starfield twinkle
     state.starfield.material.uniforms.uTime.value = t;
 
-    // Camera orbit + background drift (we walk around the galaxy; it stays still).
+    // Camera orbit + background drift + slow galaxy spin (combined showcase motion).
     if (state.mode === "galaxy") {
       const since = performance.now() - state.lastInteract;
       // The camera orbits the galaxy via OrbitControls.autoRotate, enabled after idle.
       state.controls.autoRotate = since > 1400;
+      // Slow rotation of the galaxy itself for extra motion.
+      if (state.topicGroup) state.topicGroup.rotation.y += dt * 0.014;
+      if (state.edgeLines && state.topicGroup) state.edgeLines.rotation.y = state.topicGroup.rotation.y;
       // The starfield (background) drifts independently for cosmic motion.
       state.starfield.rotation.y += dt * 0.012;
     } else {
@@ -1484,12 +1542,14 @@ function doHoverPickMoons() {
 
 function doHoverPick() {
   state.raycaster.setFromCamera(state.pointer, state.camera);
+  // Use the wider invisible hit-sphere so the whole corona is clickable, not just the tiny core.
   const targets = [];
-  for (const [, node] of state.topicMeshes) targets.push(node.userData.core);
+  for (const [, node] of state.topicMeshes) targets.push(node.userData.hit || node.userData.core);
   const hits = state.raycaster.intersectObjects(targets, false);
   const tooltip = document.getElementById("tooltip");
 
   if (hits.length > 0) {
+    // intersected object is the hit sphere (or core); its parent is the topic-node group
     const node = hits[0].object.parent;
     const id = node.userData.topicId;
     if (id !== state.hovered) {
@@ -1540,7 +1600,7 @@ function enterPlanet(id) {
 
   // target camera: ~12 units away from origin, slight angle
   const dir = new THREE.Vector3(1, 0.3, 1.6).normalize();
-  state.cameraTargetPos = dir.multiplyScalar(11);
+  state.cameraTargetPos = dir.multiplyScalar(12.1);  // pull back ~10% so planet fits the view better
   state.cameraTargetLook = new THREE.Vector3(0, 0, 0);
   state.mode = "transit";
   state.afterTransit = "planet";
@@ -3214,6 +3274,7 @@ function attachUI() {
       else if (action === "documents") openDocuments(entry);
       else if (action === "connections") openConnections(entry);
       else if (action === "ask-guide") openGuide();
+      else if (action === "regenerate") regenerateEntry(entry);
     });
   });
 
@@ -4096,7 +4157,7 @@ function hideCollideBanner() {
   if (b) b.classList.add("hidden");
 }
 
-function showInsight(title, text, durationMs = 6500) {
+function showInsight(title, text, durationMs = 13000) {
   let label = document.getElementById("insightLabel");
   if (!label) {
     label = document.createElement("div");
@@ -4104,12 +4165,26 @@ function showInsight(title, text, durationMs = 6500) {
     label.className = "insight-label";
     document.body.appendChild(label);
   }
-  label.innerHTML = `<span class="insight-title">${escapeHtml(title)}</span>${escapeHtml(text)}`;
-  // force reflow then show
+  label.innerHTML = `<button class="insight-close" aria-label="close">✕</button><span class="insight-title">${escapeHtml(title)}</span>${escapeHtml(text)}`;
   void label.offsetWidth;
+  label.classList.remove("locked");
   label.classList.add("show");
   clearTimeout(state._insightTimer);
-  state._insightTimer = setTimeout(() => label.classList.remove("show"), durationMs);
+  state._insightTimer = setTimeout(() => {
+    if (!label.classList.contains("locked")) label.classList.remove("show");
+  }, durationMs);
+  // close button explicitly dismisses
+  label.querySelector(".insight-close").addEventListener("click", (e) => {
+    e.stopPropagation();
+    label.classList.remove("show", "locked");
+    clearTimeout(state._insightTimer);
+  });
+  // click body locks the insight open until user closes it with X
+  label.addEventListener("click", (e) => {
+    if (e.target.closest(".insight-close")) return;
+    label.classList.add("locked");
+    clearTimeout(state._insightTimer);
+  });
 }
 
 async function fireCollision(firstId, secondId) {
@@ -4268,6 +4343,156 @@ function blendColors(a, b) {
   out.g = Math.min(1, out.g * 1.15);
   out.b = Math.min(1, out.b * 1.15);
   return "#" + out.getHexString();
+}
+
+/* ============================================================
+   Rebuild this entry — regenerate a topic to current schema
+   ------------------------------------------------------------
+   Calls Opus with web search + Semantic Scholar grounding to
+   produce a complete entry: card, sources, conclusionBody,
+   2 full documents. Preserves visual identity (name, position,
+   color, planetTheme) and overwrites content fields. Persists
+   as a localStorage override keyed by topic id.
+   ============================================================ */
+async function regenerateEntry(entry) {
+  if (!state.guideKey) {
+    toast("connect The Librarian to rebuild entries (paste API key in guide)");
+    openGuide();
+    return;
+  }
+  const ok = window.confirm(`Rebuild "${entry.name}" with current standards — index card, real source citations, polished documents?\n\nThis calls Opus 4.7 with web search; typical cost ~$0.30 per topic.`);
+  if (!ok) return;
+
+  showGenerationOverlay(`rebuilding ${entry.name}`, "Consulting The Librarian");
+  state.generatingNow = true;
+  try {
+    const updated = await callClaudeForRegen(entry);
+    if (!state.generatingNow) return;
+    // merge non-visual fields (preserve id, position, size, planetTheme, color, cluster, parentId)
+    Object.assign(entry, {
+      summary:        updated.summary        ?? entry.summary,
+      conclusion:     updated.conclusion     ?? entry.conclusion,
+      conclusionBody: updated.conclusionBody ?? entry.conclusionBody,
+      tags:           updated.tags           ?? entry.tags,
+      card:           updated.card           ?? entry.card,
+      sources:        updated.sources        ?? entry.sources,
+      documents:      updated.documents      ?? entry.documents,
+    });
+    persistOverride(entry);
+    hideGenerationOverlay();
+    populatePlanetHud(entry);
+    toast(`✦ ${entry.name} rebuilt`);
+  } catch (err) {
+    hideGenerationOverlay();
+    console.warn("[regenerate]", err);
+    toast(`rebuild failed: ${err.message?.slice(0, 80) || "unknown"}`);
+  } finally {
+    state.generatingNow = false;
+  }
+}
+
+async function callClaudeForRegen(entry) {
+  const papers = await Promise.race([
+    fetchSemanticScholar(entry.name),
+    new Promise(r => setTimeout(() => r([]), 6000)),
+  ]);
+  const paperContext = formatPapersForPrompt(papers);
+  const listenCtx = listenContextForPrompt();
+  const parts = [
+    `Rebuild this existing topic entry to current library standards. PRESERVE the topic's name and intellectual focus — but produce a complete, polished entry that includes everything the current schema expects (card, sources, full conclusionBody, two documents with their own sources).`,
+    `EXISTING TOPIC:\n- name: ${entry.name}\n- summary: ${entry.summary}\n- current conclusion: ${entry.conclusion}`,
+  ];
+  if (paperContext) parts.push(paperContext);
+  if (listenCtx) parts.push(listenCtx);
+  parts.push(`Use web_search to find real, working source URLs. Cite them in the 'sources' arrays.
+
+Reply ONLY with JSON (no markdown fences):
+{
+  "summary": "one-sentence summary",
+  "conclusion": "one-line distillation that lodges",
+  "tags": ["4-6 tags"],
+  "conclusionBody": [
+    {"type":"p","text":"opening"},
+    {"type":"h4","text":"section heading"},
+    {"type":"ul","items":["claim","claim","claim"]},
+    {"type":"h4","text":"contested"},
+    {"type":"ul","items":["open","open"]},
+    {"type":"p","text":"closing honest distillation"}
+  ],
+  "card": {
+    "punchline": "sharp central sentence",
+    "propositions": ["4-5 dense load-bearing claims"],
+    "hypotheses": ["2-3 if-then or what-if conjectures"],
+    "facts": ["2-3 specific dated facts"],
+    "seeAlso": [{"id":"existing-topic-id","name":"Name","why":"one-phrase tease"}]
+  },
+  "sources": [
+    {"label":"Author Year — Title","url":"https://..."}
+  ],
+  "documents": [
+    {"id":"slug","type":"...","title":"...","author":"synthesis · 2026","summary":"...","findings":["..."],"prose":["paragraph","paragraph","paragraph","paragraph"],"sources":[{"label":"...","url":"..."}]},
+    {"id":"slug2","type":"...","title":"...","author":"...","summary":"...","findings":["..."],"prose":["...","...","...","..."],"sources":[{"label":"...","url":"..."}]}
+  ]
+}`);
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": state.guideKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-opus-4-7",
+      max_tokens: 12000,
+      system: buildGenerationSystem(),
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+      messages: [{ role: "user", content: parts.join("\n\n") }],
+    }),
+  });
+  if (!resp.ok) throw new Error(`API ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const data = await resp.json();
+  let text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("\n").trim();
+  text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  const first = text.indexOf("{"), last = text.lastIndexOf("}");
+  if (first >= 0 && last > first) text = text.slice(first, last + 1);
+  return JSON.parse(text);
+}
+
+function persistOverride(entry) {
+  try {
+    const data = {
+      summary: entry.summary,
+      conclusion: entry.conclusion,
+      conclusionBody: entry.conclusionBody,
+      tags: entry.tags,
+      card: entry.card,
+      sources: entry.sources,
+      documents: entry.documents,
+    };
+    localStorage.setItem(`motu.override.${entry.id}`, JSON.stringify(data));
+  } catch (e) { /* quota — non-fatal */ }
+}
+
+function loadOverrides() {
+  for (const t of TOPICS) {
+    try {
+      const raw = localStorage.getItem(`motu.override.${t.id}`);
+      if (!raw) continue;
+      Object.assign(t, JSON.parse(raw));
+    } catch (e) { /* skip corrupted */ }
+  }
+  // moons too
+  for (const arr of Object.values(SUB_TOPICS)) {
+    for (const m of arr) {
+      try {
+        const raw = localStorage.getItem(`motu.override.${m.id}`);
+        if (!raw) continue;
+        Object.assign(m, JSON.parse(raw));
+      } catch (e) {}
+    }
+  }
 }
 
 /* ============================================================
@@ -4546,6 +4771,7 @@ function loadPersistedEntities() {
     for (const m of moons) registerGeneratedMoon(m);
   } catch (e) { /* corrupted localStorage — non-fatal */ }
   loadPersistedEdges();
+  loadOverrides();
 }
 
 async function callClaude(userText) {

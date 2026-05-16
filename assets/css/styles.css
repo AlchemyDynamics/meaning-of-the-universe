@@ -234,16 +234,24 @@ em { color: var(--ink-0); font-style: italic; }
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
   z-index: 30;
   max-width: min(640px, 80vw);
-  padding: 24px 32px; border-radius: 14px;
+  padding: 26px 44px 26px 32px; border-radius: 14px;
   background: linear-gradient(160deg, rgba(15,15,38,0.92), rgba(8,8,22,0.95));
   border: 1px solid var(--line-2);
   font-family: var(--serif); font-style: italic; font-size: clamp(18px, 2.4vw, 26px);
   line-height: 1.45; color: var(--ink-0); text-align: center;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   opacity: 0;
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition: opacity 0.5s ease, transform 0.5s ease, box-shadow 0.3s ease;
   box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 60px rgba(167,139,250,0.2);
 }
+.insight-label.locked { cursor: default; box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 80px rgba(167,139,250,0.35); }
+.insight-close {
+  position: absolute; top: 10px; right: 12px;
+  color: var(--ink-3); font-size: 14px; padding: 4px 8px; border-radius: 6px;
+  font-style: normal;
+}
+.insight-close:hover { color: var(--ink-0); background: rgba(167,139,250,0.12); }
 .insight-label.show { opacity: 1; transform: translate(-50%, -55%); }
 .insight-label .insight-title {
   display: block;
