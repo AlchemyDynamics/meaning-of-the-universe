@@ -57,7 +57,10 @@ const state = {
   pendingFusion: null,
   // guide
   guideKey: localStorage.getItem("motu.guideKey") || "",
-  guideHistory: [],
+  guideHistory: (() => {
+    try { return (JSON.parse(localStorage.getItem("motu.guideHistory") || "[]") || []).slice(-20); }
+    catch { return []; }
+  })(),
 };
 
 window.__motu = state; // debug handle
@@ -364,6 +367,11 @@ function initScene() {
   state.renderer.domElement.addEventListener("pointermove", onPointerMove);
   state.renderer.domElement.addEventListener("click", (e) => onPointerClick(e));
   state.renderer.domElement.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 1) {
+      onPointerMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
+    }
+  }, { passive: true });
+  state.renderer.domElement.addEventListener("touchmove", (e) => {
     if (e.touches.length === 1) {
       onPointerMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
     }
@@ -1373,12 +1381,21 @@ function cardReadAloud(entry) {
 function renderTagButtons(tagList) {
   const tags = document.getElementById("planetTags");
   tags.innerHTML = "";
+  const curId = currentEntry()?.id;
   for (const tag of tagList) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "planet-tag";
+    // Tag visually distinguishes "leads to an existing entry" vs "will generate a new one"
+    const match = findLocalMatch(tag);
+    if (match && match.id !== curId) {
+      btn.classList.add("tag-known");
+      btn.title = `warp to "${match.name}"`;
+    } else {
+      btn.classList.add("tag-new");
+      btn.title = `generate a new entry for "${tag}"`;
+    }
     btn.textContent = tag;
-    btn.title = `explore "${tag}"`;
     btn.addEventListener("click", () => handleTagClick(tag));
     tags.appendChild(btn);
   }
@@ -3147,7 +3164,8 @@ async function showDictPopup(word, wordRect, mouseX, mouseY) {
   pop.hidden = false;
   positionDictPopup(pop, wordRect, mouseX, mouseY);
 
-  // fetch or return cached
+  // fetch or return cached — only cache successful lookups so transient
+  // failures (rate limits, network) can retry later instead of poisoning the cache.
   let data;
   if (DICT.cache.has(word)) {
     data = DICT.cache.get(word);
@@ -3157,7 +3175,7 @@ async function showDictPopup(word, wordRect, mouseX, mouseY) {
       if (!r.ok) { data = { error: r.status === 404 ? "no definition found" : `api ${r.status}` }; }
       else { data = await r.json(); }
     } catch (e) { data = { error: "lookup failed" }; }
-    DICT.cache.set(word, data);
+    if (!data?.error) DICT.cache.set(word, data);
   }
 
   // race: if user moved on already, don't overwrite the now-hidden popup
@@ -3634,6 +3652,7 @@ function renderGuideMarkdown(text) {
 async function sendGuide(text, opts = {}) {
   addGuideMessage("user", text);
   state.guideHistory.push({ role: "user", content: text });
+  persistGuideHistory();
 
   // try simple intent first — "take me to X"
   const navMatch = matchNavIntent(text);
@@ -3658,6 +3677,7 @@ async function sendGuide(text, opts = {}) {
     const navTopic = detectReplyNav(reply);
     addGuideMessage("bot", reply, navTopic ? { navId: navTopic.id, navName: navTopic.name } : {});
     state.guideHistory.push({ role: "assistant", content: reply });
+    persistGuideHistory();
     if (opts.speakReply) speakLibrarianReply(reply);
   } catch (err) {
     typingEl.remove();
@@ -3980,7 +4000,9 @@ async function generateAndAddEntity(query) {
       }, 900);
     }
   } catch (err) {
-    hideGenerationOverlay();
+    // brief inline error before dismissing the overlay so user sees the failure
+    showGenerationOverlay("generation failed", err.message?.slice(0, 100) || "unknown error");
+    setTimeout(() => hideGenerationOverlay(), 2200);
     addGuideMessage("bot", `Generation failed: *${escapeHtml(err.message?.slice(0,140) || "unknown")}*\n\nThe model may have produced malformed JSON. Try a slightly different phrasing, or open the guide and ask there.`);
     openGuide();
   } finally {
@@ -4575,6 +4597,19 @@ Reply ONLY with JSON (no markdown fences):
   return JSON.parse(text);
 }
 
+function persistGuideHistory() {
+  try { localStorage.setItem("motu.guideHistory", JSON.stringify(state.guideHistory.slice(-30))); }
+  catch (e) { handleQuotaError(e); }
+}
+
+function handleQuotaError(e) {
+  if (e && (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014)) {
+    if (state._quotaToasted) return;
+    state._quotaToasted = true;
+    toast("storage is full — older entries may not survive a refresh");
+  }
+}
+
 function persistOverride(entry) {
   try {
     const data = {
@@ -4869,14 +4904,14 @@ function persistTopic(topic) {
     const arr = JSON.parse(localStorage.getItem("motu.userTopics") || "[]");
     arr.push(topic);
     localStorage.setItem("motu.userTopics", JSON.stringify(arr));
-  } catch (e) { /* quota or json error — non-fatal */ }
+  } catch (e) { handleQuotaError(e); }
 }
 function persistMoon(moon) {
   try {
     const arr = JSON.parse(localStorage.getItem("motu.userMoons") || "[]");
     arr.push(moon);
     localStorage.setItem("motu.userMoons", JSON.stringify(arr));
-  } catch (e) { /* non-fatal */ }
+  } catch (e) { handleQuotaError(e); }
 }
 function loadPersistedEntities() {
   try {

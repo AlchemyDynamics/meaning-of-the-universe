@@ -587,6 +587,14 @@ em { color: var(--ink-0); font-style: italic; }
   background: rgba(167,139,250,0.10);
   transform: translateY(-1px);
 }
+.planet-tag.tag-new { border-style: dashed; }
+.planet-tag.tag-new::after { content: " +"; color: var(--accent); margin-left: 1px; font-weight: 600; }
+.planet-tag.tag-known::before {
+  content: "→ ";
+  color: var(--accent);
+  font-size: 9px;
+  opacity: 0.7;
+}
 
 /* ============================================================
    Modals
