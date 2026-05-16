@@ -62,26 +62,70 @@ window.__motu = state; // debug handle
    Boot
    ============================================================ */
 window.addEventListener("DOMContentLoaded", () => {
-  setBootStatus("constructing the starfield…");
-  loadPersistedEntities();
-  initScene();
-  buildStarfield();
-  buildTopicNodes();
-  buildEdges();
-  buildPlanet();
-  attachUI();
-  initTTS();
-  setupSettingsPanel();
-  bindTTSButtons();
-  startLoop();
-  // chakra ascent runs ~7s; begin fade at ~6.4s so the third-eye portal blooms into the starfield
-  setTimeout(() => {
-    document.getElementById("boot").classList.add("fade");
-    setTimeout(() => { const b = document.getElementById("boot"); if (b) b.remove(); }, 1400);
-  }, 6400);
-  document.getElementById("topicCount").textContent = TOPICS.length;
-  document.getElementById("docCount").textContent = TOPICS.reduce((a, t) => a + t.documents.length, 0);
+  // Always schedule the boot dismissal FIRST — independent of whether init succeeds.
+  // The chakra animation runs ~6s; the third-eye mask opens at 5s-7s; fade at 7.5s.
+  scheduleBootDismiss();
+
+  try {
+    setBootStatus("constructing the starfield…");
+    loadPersistedEntities();
+    initScene();
+    buildStarfield();
+    buildTopicNodes();
+    buildEdges();
+    buildPlanet();
+    attachUI();
+    initTTS();
+    setupSettingsPanel();
+    bindTTSButtons();
+    startLoop();
+    startBootCameraRush();
+    document.getElementById("topicCount").textContent = TOPICS.length;
+    document.getElementById("docCount").textContent = TOPICS.reduce((a, t) => a + t.documents.length, 0);
+  } catch (err) {
+    console.error("[init] failed", err);
+    setBootStatus("init failed — see browser console");
+  }
 });
+
+function scheduleBootDismiss() {
+  // Open the third-eye mask at 5s; fade boot at 7.5s; remove at 9s.
+  setTimeout(() => {
+    const b = document.getElementById("boot");
+    if (b) b.classList.add("opening");
+  }, 5000);
+  setTimeout(() => {
+    const b = document.getElementById("boot");
+    if (b) b.classList.add("fade");
+  }, 7500);
+  setTimeout(() => {
+    const b = document.getElementById("boot");
+    if (b) b.remove();
+  }, 9000);
+}
+
+/**
+ * Three.js camera "rush" from deep space to the normal galaxy view.
+ * Coincides with the third-eye portal opening so the user feels as if
+ * they fly through the eye and into the galaxy.
+ */
+function startBootCameraRush() {
+  if (!state.camera) return;
+  state.camera.position.set(0, 6, 300);    // start FAR
+  const targetZ = 36;
+  const startTime = performance.now();
+  const duration = 7000;
+  function tick() {
+    const elapsed = performance.now() - startTime;
+    const t = Math.min(1, elapsed / duration);
+    const eased = 1 - Math.pow(1 - t, 3);   // ease-out cubic
+    state.camera.position.z = 300 - (300 - targetZ) * eased;
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  tick();
+  // delay idle-rotation onset so the rush is uninterrupted
+  state.lastInteract = performance.now() + duration;
+}
 
 function setBootStatus(s) {
   const el = document.getElementById("bootStatus");
