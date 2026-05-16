@@ -340,6 +340,102 @@ em { color: var(--ink-0); font-style: italic; }
 .planet-title { font-family: var(--serif); font-weight: 400; font-size: clamp(32px, 3.4vw, 44px); line-height: 1.05; color: var(--ink-0); margin-bottom: 16px; }
 .planet-summary { font-family: var(--serif); font-size: 17px; line-height: 1.55; color: var(--ink-1); margin-bottom: 28px; font-style: italic; }
 
+/* ============================================================
+   Index card — dense, scannable, persuasive content
+   ============================================================ */
+.card {
+  margin: -6px 0 22px;
+  padding: 16px 18px 18px;
+  background: rgba(167,139,250,0.04);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  position: relative;
+}
+.card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 12px;
+}
+.card-eyebrow {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--accent);
+}
+.card-punchline {
+  font-family: var(--serif); font-style: italic; font-size: 17px;
+  line-height: 1.4; color: var(--ink-0);
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.card-propositions {
+  list-style: none; padding: 0; margin: 0 0 14px;
+}
+.card-propositions li {
+  font-family: var(--sans); font-size: 13px; line-height: 1.5;
+  color: var(--ink-1);
+  padding: 4px 0 4px 18px;
+  position: relative;
+}
+.card-propositions li::before {
+  content: "·"; position: absolute; left: 4px;
+  color: var(--accent); font-size: 18px; line-height: 1.1;
+}
+
+.card-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.card-section h5 {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--accent);
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.card-hypotheses { list-style: none; padding: 0; margin: 0; }
+.card-hypotheses li {
+  font-family: var(--serif); font-style: italic; font-size: 13px; line-height: 1.5;
+  color: var(--ink-1);
+  padding: 3px 0 3px 16px;
+  position: relative;
+}
+.card-hypotheses li::before {
+  content: "→"; position: absolute; left: 0;
+  color: var(--accent); font-size: 12px;
+}
+.card-facts { list-style: none; padding: 0; margin: 0; }
+.card-facts li {
+  font-family: var(--sans); font-size: 12px; line-height: 1.45;
+  color: var(--ink-2);
+  padding: 3px 0 3px 16px;
+  position: relative;
+}
+.card-facts li::before {
+  content: "·"; position: absolute; left: 4px;
+  color: var(--gold); font-size: 14px;
+}
+
+.card-seealso { display: flex; flex-wrap: wrap; gap: 6px; }
+.card-seealso-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 999px;
+  background: rgba(167,139,250,0.06);
+  border: 1px solid var(--line);
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  color: var(--ink-1);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s, color 0.15s;
+}
+.card-seealso-pill:hover {
+  background: rgba(167,139,250,0.16);
+  border-color: var(--accent);
+  color: var(--ink-0);
+  transform: translateY(-1px);
+}
+.card-seealso-pill .pill-dot {
+  width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 6px currentColor;
+}
+.card-seealso-pill .pill-why {
+  font-family: var(--serif); font-style: italic; color: var(--ink-3);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
 .planet-menu { display: flex; flex-direction: column; gap: 8px; }
 .menu-btn {
   display: grid; grid-template-columns: 24px 1fr auto; gap: 14px; align-items: center;

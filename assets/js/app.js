@@ -923,6 +923,162 @@ function populateMoonHud(moon, parent) {
   document.getElementById("planetConnCount").textContent = `parent: ${parent.name}`;
 
   renderTagButtons(moon.tags || []);
+  renderCard(moon);
+}
+
+/* Return the entry's card data, or derive one from existing fields
+   so seed topics still render in card style. */
+function cardFor(entry) {
+  if (entry.card) return entry.card;
+  // derive
+  const propositions = [];
+  for (const node of entry.conclusionBody || []) {
+    if (node.type === "ul") {
+      for (const item of node.items) {
+        if (item && item.length >= 20 && item.length <= 220) propositions.push(item);
+      }
+    }
+  }
+  const facts = [];
+  for (const doc of (entry.documents || []).slice(0, 2)) {
+    for (const f of (doc.findings || [])) {
+      if (f && f.length >= 20 && f.length <= 200) facts.push(f);
+    }
+  }
+  // seeAlso: connections for top-level; sibling moons + parent for moons; synthesis parents for insight stars
+  let seeAlso = [];
+  if (entry.parentId) {
+    const parent = topicById(entry.parentId);
+    if (parent) seeAlso.push({ id: parent.id, name: parent.name, why: "parent topic" });
+    for (const sib of subTopicsOf(entry.parentId)) {
+      if (sib.id !== entry.id) seeAlso.push({ id: sib.id, name: sib.name, why: "sibling" });
+    }
+  } else {
+    for (const c of connectionsOf(entry.id)) {
+      seeAlso.push({ id: c.id, name: c.name, why: "connection" });
+    }
+    for (const sub of subTopicsOf(entry.id)) {
+      seeAlso.push({ id: sub.id, name: sub.name, why: "satellite" });
+    }
+  }
+  seeAlso = seeAlso.slice(0, 6);
+
+  return {
+    punchline: entry.conclusion || entry.summary || "",
+    propositions: propositions.slice(0, 5),
+    hypotheses: [],   // seed topics don't carry hypotheses by default
+    facts: facts.slice(0, 3),
+    seeAlso,
+  };
+}
+
+function renderCard(entry) {
+  const card = cardFor(entry);
+  const root = document.getElementById("planetCard");
+  if (!root) return;
+
+  document.getElementById("cardPunchline").textContent = card.punchline || entry.summary || "";
+
+  const propUl = document.getElementById("cardPropositions");
+  propUl.innerHTML = "";
+  for (const p of (card.propositions || [])) {
+    const li = document.createElement("li");
+    li.textContent = p;
+    propUl.appendChild(li);
+  }
+
+  const hypothesesWrap = document.getElementById("cardHypothesesWrap");
+  const hypothesesUl = document.getElementById("cardHypotheses");
+  hypothesesUl.innerHTML = "";
+  const hypos = card.hypotheses || [];
+  if (hypos.length > 0) {
+    hypothesesWrap.hidden = false;
+    for (const h of hypos) {
+      const li = document.createElement("li");
+      li.textContent = h;
+      hypothesesUl.appendChild(li);
+    }
+  } else {
+    hypothesesWrap.hidden = true;
+  }
+
+  const factsWrap = document.getElementById("cardFactsWrap");
+  const factsUl = document.getElementById("cardFacts");
+  factsUl.innerHTML = "";
+  const facts = card.facts || [];
+  if (facts.length > 0) {
+    factsWrap.hidden = false;
+    for (const f of facts) {
+      const li = document.createElement("li");
+      li.textContent = f;
+      factsUl.appendChild(li);
+    }
+  } else {
+    factsWrap.hidden = true;
+  }
+
+  const seeAlsoWrap = document.getElementById("cardSeeAlsoWrap");
+  const seeAlsoEl = document.getElementById("cardSeeAlso");
+  seeAlsoEl.innerHTML = "";
+  const seeAlso = (card.seeAlso || []).filter(s => s && s.id);
+  if (seeAlso.length > 0) {
+    seeAlsoWrap.hidden = false;
+    for (const s of seeAlso) {
+      const resolved = resolveById(s.id);
+      const targetName = resolved?.entry?.name || s.name;
+      const targetColor = resolved?.entry?.color || "#a78bfa";
+      const pill = document.createElement("button");
+      pill.type = "button";
+      pill.className = "card-seealso-pill";
+      pill.innerHTML = `<span class="pill-dot" style="background:${targetColor};color:${targetColor}"></span><span>${escapeHtml(targetName)}</span>${s.why ? `<span class="pill-why">— ${escapeHtml(s.why)}</span>` : ""}`;
+      pill.addEventListener("click", () => {
+        if (!resolved) return;
+        if (resolved.kind === "topic") {
+          navigateToHit({ id: resolved.entry.id, kind: "topic", name: resolved.entry.name });
+        } else {
+          navigateToHit({ id: resolved.entry.id, kind: "moon", name: resolved.entry.name, parentId: resolved.parent.id });
+        }
+      });
+      seeAlsoEl.appendChild(pill);
+    }
+  } else {
+    seeAlsoWrap.hidden = true;
+  }
+
+  // bind the card's listen button (it lives in static HTML; bind once per re-render)
+  const ttsBtn = root.querySelector("[data-tts-card]");
+  if (ttsBtn && !ttsBtn._bound) {
+    ttsBtn.addEventListener("click", () => handleTTSButtonClick(ttsBtn, () => cardReadAloud(entry)));
+    ttsBtn._bound = true;
+  }
+  const stopBtn = root.querySelector("[data-tts-stop]");
+  if (stopBtn && !stopBtn._bound) {
+    stopBtn.addEventListener("click", () => stopSpeech());
+    stopBtn._bound = true;
+  }
+}
+
+function cardReadAloud(entry) {
+  const card = cardFor(entry);
+  const parts = [];
+  parts.push(`${entry.name}.`);
+  if (card.punchline) parts.push(card.punchline);
+  if (card.propositions?.length) {
+    parts.push("Propositions.");
+    for (const p of card.propositions) parts.push(p);
+  }
+  if (card.hypotheses?.length) {
+    parts.push("Hypotheses.");
+    for (const h of card.hypotheses) parts.push(h);
+  }
+  if (card.facts?.length) {
+    parts.push("Notable.");
+    for (const f of card.facts) parts.push(f);
+  }
+  if (card.seeAlso?.length) {
+    parts.push("Adjacent territories: " + card.seeAlso.map(s => s.name).join(", ") + ".");
+  }
+  return parts.join("\n\n");
 }
 
 // Render tags at the bottom of the planet/moon panel as clickable buttons.
@@ -1225,6 +1381,7 @@ function populatePlanetHud(topic) {
   document.getElementById("planetConnCount").textContent = `${connectionsOf(topic.id).length} links`;
 
   renderTagButtons(topic.tags || []);
+  renderCard(topic);
 }
 
 /* ============================================================
@@ -1530,6 +1687,66 @@ function currentEntry() {
 }
 
 /* ============================================================
+   Listen tracking — per-topic / per-kind listen time + completion.
+   Persisted to localStorage as motu.listenStats. Used as a
+   weighted-interest signal for new content generation.
+   ============================================================ */
+const LISTEN = {
+  current: null,  // { entryId, kind, startedAt, estimatedMs }
+  history: (() => {
+    try { return JSON.parse(localStorage.getItem("motu.listenStats") || "{}"); }
+    catch { return {}; }
+  })(),
+};
+
+function listenStart(entryId, kind, text) {
+  if (!entryId) return;
+  // estimate duration: ~13 chars/sec at rate 1.0, scaled by playback rate
+  const estMs = (text.length / (13 * (TTS.rate || 1.0))) * 1000;
+  LISTEN.current = {
+    entryId, kind,
+    startedAt: performance.now(),
+    estimatedMs: estMs,
+  };
+}
+
+function listenEnd() {
+  const c = LISTEN.current;
+  if (!c) return;
+  const elapsedMs = performance.now() - c.startedAt;
+  if (elapsedMs < 1500) { LISTEN.current = null; return; }   // ignore quick cancels
+  const completion = Math.max(0, Math.min(1, elapsedMs / c.estimatedMs));
+  const cur = LISTEN.history[c.entryId] || { totalMs: 0, sessions: 0, completion: 0, lastListened: 0, kinds: {} };
+  cur.totalMs += elapsedMs;
+  cur.sessions += 1;
+  cur.completion = (cur.completion * (cur.sessions - 1) + completion) / cur.sessions;
+  cur.lastListened = Date.now();
+  cur.kinds[c.kind] = (cur.kinds[c.kind] || 0) + 1;
+  LISTEN.history[c.entryId] = cur;
+  try { localStorage.setItem("motu.listenStats", JSON.stringify(LISTEN.history)); } catch {}
+  LISTEN.current = null;
+}
+
+/* Format the top entries for inclusion in a generation prompt. */
+function listenContextForPrompt() {
+  const entries = Object.entries(LISTEN.history)
+    .map(([id, s]) => {
+      const t = topicById(id) || subTopicById(id);
+      return t ? { id, name: t.name, kind: t.parentId ? "moon" : "topic", totalSec: Math.round(s.totalMs / 1000), sessions: s.sessions, completion: s.completion } : null;
+    })
+    .filter(Boolean)
+    .filter(e => e.totalSec >= 20)
+    .sort((a, b) => b.totalSec - a.totalSec)
+    .slice(0, 10);
+  if (entries.length === 0) return "";
+  const lines = entries.map((e, i) =>
+    `  ${i+1}. ${e.id} ("${e.name}") — ${e.totalSec}s across ${e.sessions} session${e.sessions === 1 ? "" : "s"}, avg ${Math.round(e.completion * 100)}% completion`
+  );
+  return "USER LISTENING HISTORY — a signal of their genuine interests:\n" + lines.join("\n") +
+    "\n\nLean into this. Where natural, link seeAlso to ids they've listened to (familiar anchor) AND 1-2 they haven't (novel discovery).";
+}
+
+/* ============================================================
    Text-to-speech
    ------------------------------------------------------------
    Uses the browser's Web Speech API — no API key required.
@@ -1809,6 +2026,10 @@ function entryToReadable(entry, kind) {
 
 function startSpeech(text, btn) {
   stopSpeech();
+  // start listen tracking — derive entry id from the surrounding entry
+  const entry = currentEntry();
+  const kind = btn?.dataset?.ttsSource || (btn?.dataset?.ttsDoc !== undefined ? "document" : btn?.dataset?.ttsCard !== undefined ? "card" : "other");
+  if (entry) listenStart(entry.id, kind, text);
   if (TTS.engine === "elevenlabs") {
     startSpeechElevenLabs(text, btn);
   } else {
@@ -1993,6 +2214,7 @@ function playNextChunk() {
 }
 
 function stopSpeech() {
+  if (LISTEN.current) listenEnd();
   TTS.playing = false;
   TTS.paused = false;
   TTS.queue = [];
@@ -3100,6 +3322,27 @@ Reply ONLY with valid JSON in this exact shape — no markdown fences, no prose:
     ],
     "planetTheme": {"type":"theme-name","params":{"hue":0.0,"accent":0.0,"density":1.0}},
     "connections": ["topic-id","topic-id"],
+    "card": {
+      "punchline": "One sharp sentence that lodges in memory. Italicized in the UI.",
+      "propositions": [
+        "3-5 dense declarative claims. Each its own load-bearing thought.",
+        "Substance, not summary. Compressed. Specific.",
+        "Earn the reader's next click.",
+        "Each line scannable in 2-3 seconds."
+      ],
+      "hypotheses": [
+        "2-3 if-then or open conjectures. 'If X, then Y' or 'What if X?'",
+        "These should provoke, not declare."
+      ],
+      "facts": [
+        "2-3 short surprising facts. Specific, named, dated where possible.",
+        "Calibrated — not hyperbole, but the kind of fact a smart friend mentions in passing."
+      ],
+      "seeAlso": [
+        {"id": "existing-topic-id", "name": "Topic Name", "why": "one-phrase reason this beckons"},
+        {"id": "another-existing-id", "name": "Another", "why": "different angle on the same question"}
+      ]
+    },
     "sources": [
       {"label":"Author Year — Title (Venue)","url":"https://arxiv.org/abs/..."},
       {"label":"Author — Encyclopedia entry","url":"https://plato.stanford.edu/entries/..."}
@@ -3129,7 +3372,18 @@ For new TOP-LEVEL topics (parent = null), you MUST include a "connections" array
 CRITICAL — SOURCES:
 Every entity AND every document MUST include a "sources" array of real URLs. Use the papers provided in the user message AND any additional sources you find via web_search. Each source is { "label": "...", "url": "https://..." } where label is a short human-readable citation (Author Year — Title, or Encyclopedia entry, or Lecture/Talk title). URLs must be real, working, and direct — prefer arXiv abstract pages, journal/PubMed pages with open-access PDF, Stanford Encyclopedia of Philosophy entries, IEP entries, university course pages, established institutional publications. Avoid Wikipedia as a primary source (it can be one entry but not the only one). 3-6 sources per document, 4-8 at the topic level. Do not invent URLs — only use URLs from the provided papers or from your web_search results.
 
-Make it substantive, intellectually serious, calibrated. Match the library's tone: distillation-focused, neither breathless nor dismissive. Two documents. 3-4 paragraphs each in prose.`;
+CRITICAL — INDEX CARD (the "card" field, the user's primary view):
+The card is the user's main interface to this topic — what they see when they land on the planet. Treat it as notes on a 3x5 index card written by a brilliant generalist. Maximum delivery, minimum filler.
+
+- "punchline" — ONE sharp sentence that captures the topic's essential bite. Should lodge in memory.
+- "propositions" — 4-5 declarative claims. Each load-bearing. Compressed. Specific. NOT a summary of the conclusion; each is its own dense thought.
+- "hypotheses" — 2-3 open conjectures. "If X, then Y" or "What if X?" These should provoke a 'huh' from the reader and make them want to read more.
+- "facts" — 2-3 short surprising facts. Specific, dated where possible (e.g. "In 1956, Shannon proved..."), named, calibrated. Not hyperbole — the kind of fact a smart friend mentions in passing.
+- "seeAlso" — 4-6 navigation pills to OTHER existing topic ids. Each {id, name, why} where 'why' is a one-phrase tease ('the substrate problem', 'where this becomes empirical', etc.). USE THE USER LISTENING HISTORY IF PROVIDED — at least 2 of the seeAlso ids should be topics they've already listened to (familiar anchor), and 1-2 should be ones they have NOT yet (discovery). Only use ids of topics that ALREADY EXIST in the library (listed above). Do not invent ids.
+
+The card is what persuades the user to dig deeper. It should feel like the library OFFERING ITSELF — there is more behind every line, and the see-also pills are doors.
+
+Make the documents substantive, intellectually serious, calibrated. Match the library's tone: distillation-focused, neither breathless nor dismissive. Two documents. 3-4 paragraphs each in prose. But the CARD is the load-bearing user surface.`;
 }
 
 /* Pre-fetch papers from Semantic Scholar to ground Opus's generation in real sources. */
@@ -3167,9 +3421,12 @@ async function callClaudeForGeneration(query) {
     new Promise(r => setTimeout(() => r([]), 6000)),
   ]);
   const paperContext = formatPapersForPrompt(papers);
-  const userMessage = paperContext
-    ? `Search query: "${query}"\n\n${paperContext}\n\nNow use web_search if you need additional sources, then output the full JSON entry. Every document MUST include a 'sources' array of 3-6 real URLs (paper, article, encyclopedia, lecture).`
-    : `Search query: "${query}"\n\nUse web_search to find authoritative sources, then output the full JSON entry. Every document MUST include a 'sources' array of 3-6 real URLs.`;
+  const listenContext = listenContextForPrompt();
+  const parts = [`Search query: "${query}"`];
+  if (paperContext) parts.push(paperContext);
+  if (listenContext) parts.push(listenContext);
+  parts.push("Now use web_search if you need additional sources, then output the full JSON entry. The 'card' field is the load-bearing user surface — give it maximum delivery. Every document MUST include a 'sources' array of 3-6 real URLs.");
+  const userMessage = parts.join("\n\n");
 
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",

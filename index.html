@@ -127,6 +127,37 @@
       <h2 class="planet-title" id="planetTitle">Topic</h2>
       <p class="planet-summary" id="planetSummary"></p>
 
+      <!-- Index card: dense, scannable, persuasive. Built from the entry's card field or derived. -->
+      <section class="card" id="planetCard">
+        <header class="card-head">
+          <span class="card-eyebrow">index card</span>
+          <div class="tts-controls">
+            <button class="tts-btn" data-tts-card title="Read the card aloud">
+              <svg class="tts-icon-play" viewBox="0 0 24 24" width="14" height="14"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+              <svg class="tts-icon-pause" viewBox="0 0 24 24" width="14" height="14" hidden><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>
+              <span class="tts-label">listen</span>
+            </button>
+            <button class="tts-stop" data-tts-stop title="Stop" hidden>
+              <svg viewBox="0 0 24 24" width="12" height="12"><path d="M6 6h12v12H6z" fill="currentColor"/></svg>
+            </button>
+          </div>
+        </header>
+        <p class="card-punchline" id="cardPunchline"></p>
+        <ul class="card-propositions" id="cardPropositions"></ul>
+        <div class="card-section" id="cardHypothesesWrap" hidden>
+          <h5>hypotheses</h5>
+          <ul class="card-hypotheses" id="cardHypotheses"></ul>
+        </div>
+        <div class="card-section" id="cardFactsWrap" hidden>
+          <h5>did you know</h5>
+          <ul class="card-facts" id="cardFacts"></ul>
+        </div>
+        <div class="card-section" id="cardSeeAlsoWrap" hidden>
+          <h5>see also</h5>
+          <div class="card-seealso" id="cardSeeAlso"></div>
+        </div>
+      </section>
+
       <div class="planet-menu">
         <button class="menu-btn" data-action="conclusion">
           <span class="menu-icon">◎</span>
