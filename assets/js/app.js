@@ -218,35 +218,41 @@ const CHAKRA_TONES = [
   { freq: 1046.50, when: 2.65 },  // C6  — crown (octave above root)
 ];
 
+let _bootTonesPlayed = false;
 function playBootChakraTones() {
   const ctx = getAudioContext();
   if (!ctx) return;
-  const bootStartedAt = performance.now();
 
-  // Only schedule when the context is actually running; otherwise queued
-  // tones with stale timestamps fire all at once when it finally resumes.
-  const trySchedule = () => {
-    if (!ctx || ctx.state !== "running") return false;
-    const elapsedSec = (performance.now() - bootStartedAt) / 1000;
-    if (elapsedSec > 4) return false;  // too late — don't ring after the chakra phase
-    for (const t of CHAKRA_TONES) {
-      const adjusted = Math.max(0.0, t.when - elapsedSec);
-      playGlassBell(ctx, t.freq, adjusted);
-    }
-    return true;
+  // Schedule from the current moment with the original spacing.
+  // If the audio context is suspended (autoplay policy), we'll fire on the
+  // first user gesture instead. Either way, the tones play in sequence.
+  const fireSequence = () => {
+    if (_bootTonesPlayed) return;
+    if (!ctx || ctx.state !== "running") return;
+    _bootTonesPlayed = true;
+    for (const t of CHAKRA_TONES) playGlassBell(ctx, t.freq, t.when);
   };
 
-  if (trySchedule()) return;
-  // suspended — try resume now and retry, otherwise on first gesture
-  ctx.resume().then(() => trySchedule()).catch(() => {
-    const onGesture = () => {
-      ctx.resume().then(() => trySchedule()).catch(() => {});
-      window.removeEventListener("pointerdown", onGesture);
-      window.removeEventListener("keydown", onGesture);
-    };
-    window.addEventListener("pointerdown", onGesture, { once: true });
-    window.addEventListener("keydown", onGesture, { once: true });
-  });
+  // Try to start immediately. Most browsers will allow this if the user
+  // navigated to the page recently; many block it without explicit gesture.
+  if (ctx.state === "running") {
+    fireSequence();
+    return;
+  }
+  ctx.resume().then(() => fireSequence()).catch(() => {});
+
+  // Always also bind a one-shot gesture listener — guaranteed audio activation.
+  const onGesture = () => {
+    ctx.resume().then(() => fireSequence()).catch(() => {});
+    // If resume returns synchronously running in some browsers, schedule too:
+    if (ctx.state === "running") fireSequence();
+    window.removeEventListener("pointerdown", onGesture);
+    window.removeEventListener("keydown", onGesture);
+    window.removeEventListener("touchstart", onGesture);
+  };
+  window.addEventListener("pointerdown", onGesture, { once: true });
+  window.addEventListener("keydown", onGesture, { once: true });
+  window.addEventListener("touchstart", onGesture, { once: true });
 }
 
 function playGlassBell(ctx, freq, when) {
@@ -2698,6 +2704,10 @@ async function elSaveKey() {
     TTS.elKey = key;
     const voices = await elFetchVoices(key);
     TTS.elVoices = voices;
+    ensureLilyInVoices();
+    // Force Lily as the saved selection from the moment of first connection.
+    const lily = TTS.elVoices.find(v => v.voice_id === LILY_VOICE_ID || (v.name || "").toLowerCase() === "lily");
+    if (lily) localStorage.setItem("motu.tts.unifiedKey", `elevenlabs:${lily.voice_id}`);
     localStorage.setItem("motu.tts.elKey", key);
     populateVoiceSelect();
     // first-connection default: prefer Lily, then Rachel, else the first available
@@ -2748,14 +2758,44 @@ function elDisconnect() {
   toast("ElevenLabs disconnected");
 }
 
-// Default preference order for an EL voice when no persisted selection applies.
+// ElevenLabs standard "Lily" voice — guaranteed available across all accounts.
+// Hardcoded id so she can be used even if the user's library somehow excludes her.
+const LILY_VOICE_ID = "pFZP5JQG7iQjIQuC4Bku";
+const LILY_FALLBACK = {
+  voice_id: LILY_VOICE_ID,
+  name: "Lily",
+  category: "premade",
+  labels: { description: "warm narrator", accent: "british" },
+};
+
+// Inject Lily into elVoices if she isn't already there.
+function ensureLilyInVoices() {
+  if (!TTS.elVoices.length) return;
+  if (!TTS.elVoices.find(v => v.voice_id === LILY_VOICE_ID || (v.name || "").toLowerCase() === "lily")) {
+    TTS.elVoices.unshift(LILY_FALLBACK);
+  }
+}
+
+// Default preference: Lily, by voice_id or name (incl. partial). Never Adam.
 function pickPreferredElVoice() {
   if (!TTS.elVoices.length) return null;
+  // 1. by voice_id
+  let hit = TTS.elVoices.find(v => v.voice_id === LILY_VOICE_ID);
+  if (hit) return hit;
+  // 2. exact name
   const order = ["lily", "rachel", "charlotte", "bella", "domi"];
   for (const name of order) {
-    const hit = TTS.elVoices.find(v => v.name.toLowerCase() === name);
+    hit = TTS.elVoices.find(v => (v.name || "").toLowerCase() === name);
     if (hit) return hit;
   }
+  // 3. partial name (catches "Lily — Soft Whisper" or similar)
+  for (const name of order) {
+    hit = TTS.elVoices.find(v => (v.name || "").toLowerCase().includes(name));
+    if (hit) return hit;
+  }
+  // 4. anything but Adam
+  hit = TTS.elVoices.find(v => (v.name || "").toLowerCase() !== "adam");
+  if (hit) return hit;
   return TTS.elVoices[0];
 }
 
@@ -2763,6 +2803,10 @@ async function elRestoreConnected() {
   // re-validate the key by listing voices; show connected UI on success
   const voices = await elFetchVoices(TTS.elKey);
   TTS.elVoices = voices;
+  ensureLilyInVoices();
+  // FORCE Lily as the unified key — overwrite any stale selection (e.g. Adam).
+  const lily = TTS.elVoices.find(v => v.voice_id === LILY_VOICE_ID || (v.name || "").toLowerCase() === "lily");
+  if (lily) localStorage.setItem("motu.tts.unifiedKey", `elevenlabs:${lily.voice_id}`);
   document.getElementById("elDisconnected").hidden = true;
   document.getElementById("elKeyRow").hidden = true;
   document.getElementById("elConnected").hidden = false;
@@ -2935,28 +2979,106 @@ function setupSettingsPanel() {
 }
 
 /* ============================================================
-   Background music — composed via ElevenLabs music API
+   Background music — IndexedDB-cached library
    ------------------------------------------------------------
-   The user composes a loop once; it's stored as a blob URL in
-   memory and looped via HTMLAudioElement. Tiny dock with
-   play/pause + volume + "compose new". Volume persists.
+   Up to 10 distinct ambient loops are composed once via the
+   ElevenLabs Music API and cached as Blobs in IndexedDB. On
+   subsequent visits, no API calls are made — a random track
+   is selected and autoplay is attempted (gesture-fallback).
+   The controller exposes prev/next/shuffle/compose + a track
+   list with delete.
    ============================================================ */
+
+const MUSIC_PROMPTS = [
+  { name: "Mystical Drift",     prompt: "Mystical New Age ambient. Sustained ethereal pads, soft bell tones, distant choral hums, gentle cosmic atmosphere. Vast and loopy. No drums, no vocals with lyrics." },
+  { name: "Cosmic Ocean",       prompt: "Vast cosmic ocean ambient. Watery synth pads drifting in slow waves, soft bell pings, distant low hum. Tranquil, hypnotic. No drums." },
+  { name: "Sacred Geometry",    prompt: "Sacred geometry tones. Sine wave drones at low frequency, occasional crystal cluster chimes, slow breathing pad. Meditative." },
+  { name: "Inner Cosmos",       prompt: "Inner cosmos meditation. Singing bowls, sustained drone, soft wind, distant gentle bells. Spacious and contemplative." },
+  { name: "Star Nursery",       prompt: "Star nursery ambient. Twinkling harmonic chimes, low cello-like pad, gentle sweeping arpeggios. Dreamy and weightless." },
+  { name: "Crystal Cave",       prompt: "Crystal cave reverb. Echoing bell tones, deep harmonic pad, occasional soft glissando, faint dripping water. Reflective." },
+  { name: "Vapor Dream",        prompt: "Ethereal vapor dream. Floating wordless vocal pads, ambient bell harmonics, harp glissandos. Weightless and slow." },
+  { name: "Slow Pulse",         prompt: "Slow ambient cosmic drone. Deep low pads, slow shimmering bell tones, atmospheric whoosh. Meditative pulse." },
+  { name: "Aurora",             prompt: "Aurora flow. Synth pad sweeps in slow waves, gentle high glissando, sub-bass hum. Otherworldly cool color." },
+  { name: "Third Eye",          prompt: "Third eye opening. Sine wave foundation, occasional crystal bell, faint choir distant, indigo mood. Deep meditation." },
+];
+
 const MUSIC = {
   audio: null,
-  blobUrl: null,
+  library: [],            // [{ id, name, prompt, blobUrl, createdAt }]
+  currentIdx: -1,
   composing: false,
-  volume: parseFloat(localStorage.getItem("motu.music.volume") || "0.45"),
+  volume: parseFloat(localStorage.getItem("motu.music.volume") || "0.40"),
+  autoplayAttempted: false,
 };
 
-const MUSIC_PROMPT = "Mystical New Age ambient. Slow tempo. Sustained ethereal pads, soft bell tones, distant choral hums, gentle cosmic atmosphere. Vast and loopy. No drums, no vocals with lyrics. Suitable as continuous library background.";
+const DB_NAME = "motu-music";
+const DB_STORE = "loops";
 
-function setupMusic() {
+function openMusicDB() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) { reject(new Error("IndexedDB unavailable")); return; }
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) {
+        db.createObjectStore(DB_STORE, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function loadMusicLibrary() {
+  try {
+    const db = await openMusicDB();
+    const tx = db.transaction(DB_STORE, "readonly");
+    const store = tx.objectStore(DB_STORE);
+    const records = await new Promise((res, rej) => {
+      const r = store.getAll();
+      r.onsuccess = () => res(r.result || []);
+      r.onerror = () => rej(r.error);
+    });
+    MUSIC.library = records.map(r => ({
+      id: r.id, name: r.name, prompt: r.prompt,
+      blobUrl: URL.createObjectURL(r.blob),
+      createdAt: r.createdAt,
+    })).sort((a, b) => a.createdAt - b.createdAt);
+  } catch (e) {
+    console.warn("[music] cannot open library:", e?.message || e);
+  }
+}
+async function saveMusicLoop(record, blob) {
+  try {
+    const db = await openMusicDB();
+    const tx = db.transaction(DB_STORE, "readwrite");
+    tx.objectStore(DB_STORE).put({
+      id: record.id, name: record.name, prompt: record.prompt,
+      blob, createdAt: record.createdAt,
+    });
+    await new Promise(r => tx.oncomplete = r);
+  } catch (e) {
+    console.warn("[music] save failed:", e?.message || e);
+  }
+}
+async function deleteMusicLoop(id) {
+  try {
+    const db = await openMusicDB();
+    const tx = db.transaction(DB_STORE, "readwrite");
+    tx.objectStore(DB_STORE).delete(id);
+    await new Promise(r => tx.oncomplete = r);
+  } catch (e) {}
+}
+
+async function setupMusic() {
   document.getElementById("musicMini").addEventListener("click", () => {
     const exp = document.getElementById("musicExpand");
     exp.hidden = !exp.hidden;
   });
   document.getElementById("musicPlay").addEventListener("click", musicTogglePlay);
+  document.getElementById("musicPrev").addEventListener("click", () => switchTrack(-1));
+  document.getElementById("musicNext").addEventListener("click", () => switchTrack(+1));
   document.getElementById("musicCompose").addEventListener("click", composeMusic);
+  document.getElementById("musicShuffle").addEventListener("click", () => pickRandomTrack(true));
   const vol = document.getElementById("musicVolume");
   vol.value = MUSIC.volume;
   vol.addEventListener("input", (e) => {
@@ -2964,23 +3086,89 @@ function setupMusic() {
     if (MUSIC.audio) MUSIC.audio.volume = MUSIC.volume;
     localStorage.setItem("motu.music.volume", String(MUSIC.volume));
   });
+
+  await loadMusicLibrary();
+  renderTrackList();
+
+  if (MUSIC.library.length > 0) {
+    // Pick a random loop and autoplay (subject to autoplay policy).
+    pickRandomTrack(false);
+    attemptAutoplay();
+  } else {
+    setMusicHint("click + compose to add your first loop · stays cached forever");
+  }
+}
+
+function attemptAutoplay() {
+  if (!MUSIC.audio || MUSIC.autoplayAttempted) return;
+  MUSIC.autoplayAttempted = true;
+  MUSIC.audio.play().then(() => {
+    document.getElementById("musicMini").classList.add("playing");
+    setMusicPlayIcon(false);
+  }).catch(() => {
+    // Autoplay blocked — wait for first user gesture
+    setMusicHint("click anywhere to start the loop");
+    const start = () => {
+      if (!MUSIC.audio) return;
+      MUSIC.audio.play().then(() => {
+        document.getElementById("musicMini").classList.add("playing");
+        setMusicPlayIcon(false);
+        setMusicHint("");
+      }).catch(() => {});
+      window.removeEventListener("pointerdown", start);
+      window.removeEventListener("keydown", start);
+    };
+    window.addEventListener("pointerdown", start, { once: true });
+    window.addEventListener("keydown", start, { once: true });
+  });
+}
+
+function pickRandomTrack(playImmediately) {
+  if (MUSIC.library.length === 0) return;
+  const newIdx = Math.floor(Math.random() * MUSIC.library.length);
+  loadTrack(newIdx, playImmediately);
+}
+function switchTrack(delta) {
+  if (MUSIC.library.length === 0) return;
+  let idx = MUSIC.currentIdx + delta;
+  if (idx < 0) idx = MUSIC.library.length - 1;
+  if (idx >= MUSIC.library.length) idx = 0;
+  loadTrack(idx, true);
+}
+function loadTrack(idx, playImmediately) {
+  if (idx < 0 || idx >= MUSIC.library.length) return;
+  // dispose previous
+  if (MUSIC.audio) { try { MUSIC.audio.pause(); } catch (_) {} MUSIC.audio = null; }
+  MUSIC.currentIdx = idx;
+  const track = MUSIC.library[idx];
+  MUSIC.audio = new Audio(track.blobUrl);
+  MUSIC.audio.loop = true;
+  MUSIC.audio.volume = MUSIC.volume;
+  setMusicTrackName(track.name);
+  renderTrackList();
+  if (playImmediately) {
+    MUSIC.audio.play().then(() => {
+      document.getElementById("musicMini").classList.add("playing");
+      setMusicPlayIcon(false);
+      setMusicHint("");
+    }).catch(() => setMusicHint("click anywhere to start"));
+  }
 }
 
 async function composeMusic() {
-  if (!TTS.elKey) {
-    toast("connect ElevenLabs in Settings first");
+  if (!TTS.elKey) { toast("connect ElevenLabs in Settings first"); return; }
+  if (MUSIC.composing) return;
+  if (MUSIC.library.length >= MUSIC_PROMPTS.length) {
+    toast(`library full (${MUSIC_PROMPTS.length} loops). delete one first.`);
     return;
   }
-  if (MUSIC.composing) return;
+  // Pick the next unused prompt in order
+  const used = new Set(MUSIC.library.map(t => t.name));
+  const promptEntry = MUSIC_PROMPTS.find(p => !used.has(p.name)) || MUSIC_PROMPTS[0];
   MUSIC.composing = true;
-  setMusicStatus("composing… (~30s)");
+  setMusicHint(`composing "${promptEntry.name}"… (~30s)`);
   document.getElementById("musicCompose").disabled = true;
-
   try {
-    // Stop and dispose previous audio
-    if (MUSIC.audio) { try { MUSIC.audio.pause(); } catch (_) {} MUSIC.audio = null; }
-    if (MUSIC.blobUrl) { URL.revokeObjectURL(MUSIC.blobUrl); MUSIC.blobUrl = null; }
-
     const resp = await fetch("https://api.elevenlabs.io/v1/music/compose", {
       method: "POST",
       headers: {
@@ -2989,8 +3177,8 @@ async function composeMusic() {
         "Accept": "audio/mpeg",
       },
       body: JSON.stringify({
-        prompt: MUSIC_PROMPT,
-        music_length_ms: 120000,   // 2 minutes; will loop
+        prompt: promptEntry.prompt,
+        music_length_ms: 120000,
         output_format: "mp3_44100_128",
       }),
     });
@@ -2999,17 +3187,24 @@ async function composeMusic() {
       throw new Error(`API ${resp.status}: ${txt.slice(0, 140)}`);
     }
     const blob = await resp.blob();
-    MUSIC.blobUrl = URL.createObjectURL(blob);
-    MUSIC.audio = new Audio(MUSIC.blobUrl);
-    MUSIC.audio.loop = true;
-    MUSIC.audio.volume = MUSIC.volume;
-    await MUSIC.audio.play().catch(() => {});
-    setMusicStatus("playing");
-    showMusicPlayBtn(true);
-    document.getElementById("musicMini").classList.add("playing");
+    const record = {
+      id: `loop-${Date.now().toString(36)}`,
+      name: promptEntry.name,
+      prompt: promptEntry.prompt,
+      createdAt: Date.now(),
+    };
+    await saveMusicLoop(record, blob);
+    const entry = {
+      ...record,
+      blobUrl: URL.createObjectURL(blob),
+    };
+    MUSIC.library.push(entry);
+    renderTrackList();
+    loadTrack(MUSIC.library.length - 1, true);
+    setMusicHint(`✦ added "${entry.name}" (${MUSIC.library.length}/${MUSIC_PROMPTS.length})`);
   } catch (err) {
     console.warn("[music] compose failed", err);
-    setMusicStatus(`failed: ${err.message?.slice(0,40) || "unknown"}`);
+    setMusicHint(`failed: ${err.message?.slice(0,40) || "unknown"}`);
     toast(`music: ${err.message?.slice(0,80) || "compose failed"}`);
   } finally {
     MUSIC.composing = false;
@@ -3018,34 +3213,68 @@ async function composeMusic() {
 }
 
 function musicTogglePlay() {
-  if (!MUSIC.audio) return;
+  if (!MUSIC.audio) {
+    if (MUSIC.library.length > 0) { pickRandomTrack(true); }
+    else { toast("compose a loop first (+)"); }
+    return;
+  }
   if (MUSIC.audio.paused) {
     MUSIC.audio.play().catch(() => {});
-    setMusicStatus("playing");
     setMusicPlayIcon(false);
     document.getElementById("musicMini").classList.add("playing");
   } else {
     MUSIC.audio.pause();
-    setMusicStatus("paused");
     setMusicPlayIcon(true);
     document.getElementById("musicMini").classList.remove("playing");
   }
 }
 
-function showMusicPlayBtn(visible) {
-  const btn = document.getElementById("musicPlay");
-  btn.hidden = !visible;
-  setMusicPlayIcon(false);
+function renderTrackList() {
+  const list = document.getElementById("musicTracksList");
+  const count = document.getElementById("musicTracksCount");
+  if (!list || !count) return;
+  list.innerHTML = "";
+  count.textContent = `${MUSIC.library.length}/${MUSIC_PROMPTS.length} tracks`;
+  MUSIC.library.forEach((track, i) => {
+    const li = document.createElement("li");
+    li.className = i === MUSIC.currentIdx ? "active" : "";
+    li.innerHTML = `<span style="flex:1">${escapeHtml(track.name)}</span><button class="track-delete" title="remove">✕</button>`;
+    li.addEventListener("click", (e) => {
+      if (e.target.classList.contains("track-delete")) return;
+      loadTrack(i, true);
+    });
+    li.querySelector(".track-delete").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await deleteMusicLoop(track.id);
+      try { URL.revokeObjectURL(track.blobUrl); } catch (_) {}
+      MUSIC.library.splice(i, 1);
+      if (MUSIC.currentIdx === i) {
+        if (MUSIC.audio) { try { MUSIC.audio.pause(); } catch (_) {} MUSIC.audio = null; }
+        MUSIC.currentIdx = -1;
+        setMusicTrackName("no track");
+      } else if (MUSIC.currentIdx > i) {
+        MUSIC.currentIdx -= 1;
+      }
+      renderTrackList();
+    });
+    list.appendChild(li);
+  });
 }
+
 function setMusicPlayIcon(paused) {
   const playI = document.querySelector("#musicPlay .music-icon-play");
   const pauseI = document.querySelector("#musicPlay .music-icon-pause");
+  if (!playI || !pauseI) return;
   if (paused) { playI.hidden = false; pauseI.hidden = true; }
   else        { playI.hidden = true;  pauseI.hidden = false; }
 }
-function setMusicStatus(s) {
-  const el = document.getElementById("musicStatus");
-  if (el) el.textContent = s;
+function setMusicTrackName(name) {
+  const el = document.getElementById("musicTrackName");
+  if (el) el.textContent = name || "—";
+}
+function setMusicHint(s) {
+  const el = document.getElementById("musicHint");
+  if (el) el.textContent = s || "";
 }
 
 /* ============================================================
