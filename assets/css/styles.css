@@ -252,6 +252,35 @@ em { color: var(--ink-0); font-style: italic; }
   font-style: normal;
 }
 .insight-close:hover { color: var(--ink-0); background: rgba(167,139,250,0.12); }
+.insight-tags {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; gap: 6px;
+  font-style: normal; align-items: center;
+  justify-content: center;
+}
+.insight-tags-label {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--accent);
+  margin-right: 4px;
+}
+.insight-tag {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  color: var(--ink-1);
+  padding: 5px 12px; border-radius: 999px;
+  background: rgba(167,139,250,0.08);
+  border: 1px dashed var(--line-2);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+}
+.insight-tag:hover {
+  background: rgba(167,139,250,0.22);
+  border-color: var(--accent);
+  color: var(--ink-0);
+  transform: translateY(-1px);
+}
+.insight-tag::after { content: " +"; color: var(--accent); margin-left: 2px; font-weight: 600; }
 .insight-label.show { opacity: 1; transform: translate(-50%, -55%); }
 .insight-label .insight-title {
   display: block;

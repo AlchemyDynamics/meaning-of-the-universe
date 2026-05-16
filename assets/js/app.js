@@ -203,19 +203,21 @@ function getAudioContext() {
   } catch (e) { return null; }
 }
 
-/* Seven crystal-bell tones spanning a FULL OCTAVE — C5 root → C6 crown.
-   The crown resolves on the octave above the root for a strong cadence.
-   Each tone has a primary sine + a chorus-detuned partner + an octave
-   sparkle harmonic through a low-pass for warmth. Long exponential
-   decay so they overlap into a slowly-building chord. */
+/* Eight crystal-bell tones — a FULL C major scale, C5 → C6.
+   Each chakra rings its own note (root C, sacral D, solar E, heart F,
+   throat G, third-eye A, crown B) and an 8th tone resolves on the
+   octave C6 as the cadence. Each tone has a primary sine + a chorus-
+   detuned partner + an octave sparkle harmonic through a low-pass.
+   Long exponential decay so they overlap into a building chord. */
 const CHAKRA_TONES = [
   { freq: 523.25,  when: 0.20 },  // C5  — root
   { freq: 587.33,  when: 0.60 },  // D5  — sacral
   { freq: 659.25,  when: 1.00 },  // E5  — solar plexus
   { freq: 698.46,  when: 1.40 },  // F5  — heart
   { freq: 783.99,  when: 1.80 },  // G5  — throat
-  { freq: 880.00,  when: 2.25 },  // A5  — third eye
-  { freq: 1046.50, when: 2.65 },  // C6  — crown (octave above root)
+  { freq: 880.00,  when: 2.20 },  // A5  — third eye
+  { freq: 987.77,  when: 2.55 },  // B5  — crown (leading tone)
+  { freq: 1046.50, when: 2.90 },  // C6  — octave resolution
 ];
 
 let _bootTonesPlayed = false;
@@ -4541,7 +4543,11 @@ function hideCollideBanner() {
   if (b) b.classList.add("hidden");
 }
 
-function showInsight(title, text, durationMs = 13000) {
+function showInsight(title, text, optsOrMs = {}) {
+  // backwards compat: third arg used to be just durationMs (a number)
+  const opts = (typeof optsOrMs === "number") ? { durationMs: optsOrMs } : (optsOrMs || {});
+  const { durationMs = 13000, tags = [], permanent = false } = opts;
+
   let label = document.getElementById("insightLabel");
   if (!label) {
     label = document.createElement("div");
@@ -4549,14 +4555,23 @@ function showInsight(title, text, durationMs = 13000) {
     label.className = "insight-label";
     document.body.appendChild(label);
   }
-  label.innerHTML = `<button class="insight-close" aria-label="close">✕</button><span class="insight-title">${escapeHtml(title)}</span>${escapeHtml(text)}`;
+  const tagButtons = (tags && tags.length > 0) ? `
+    <div class="insight-tags">
+      <span class="insight-tags-label">explore further</span>
+      ${tags.slice(0, 5).map(t => `<button class="insight-tag" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join("")}
+    </div>` : "";
+  label.innerHTML = `<button class="insight-close" aria-label="close">✕</button><span class="insight-title">${escapeHtml(title)}</span>${escapeHtml(text)}${tagButtons}`;
   void label.offsetWidth;
   label.classList.remove("locked");
   label.classList.add("show");
+  if (permanent) label.classList.add("locked");
+
   clearTimeout(state._insightTimer);
-  state._insightTimer = setTimeout(() => {
-    if (!label.classList.contains("locked")) label.classList.remove("show");
-  }, durationMs);
+  if (!permanent) {
+    state._insightTimer = setTimeout(() => {
+      if (!label.classList.contains("locked")) label.classList.remove("show");
+    }, durationMs);
+  }
   // close button explicitly dismisses
   label.querySelector(".insight-close").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -4565,10 +4580,22 @@ function showInsight(title, text, durationMs = 13000) {
   });
   // click body locks the insight open until user closes it with X
   label.addEventListener("click", (e) => {
-    if (e.target.closest(".insight-close")) return;
+    if (e.target.closest(".insight-close, .insight-tag")) return;
     label.classList.add("locked");
     clearTimeout(state._insightTimer);
   });
+  // Tag buttons: dismiss the insight and trigger generation/navigation for that term
+  for (const btn of label.querySelectorAll(".insight-tag")) {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const tag = btn.dataset.tag;
+      if (!tag) return;
+      label.classList.remove("show", "locked");
+      clearTimeout(state._insightTimer);
+      // The tag-click logic already handles "match existing? warp : generate".
+      handleTagClick(tag);
+    });
+  }
 }
 
 async function fireCollision(firstId, secondId) {
@@ -4655,7 +4682,15 @@ async function fireCollision(firstId, secondId) {
   rebuildEdges();
 
   document.getElementById("topicCount").textContent = TOPICS.length;
-  showInsight(result.name || "insight", result.summary, 7000);
+  // Pull exploration tags from the synthesis result (preferred) or fall back to
+  // a few of the new entity's tags. The insight is now permanent — only X dismisses.
+  const exploreTags = (Array.isArray(result.explore) && result.explore.length > 0)
+    ? result.explore.slice(0, 5)
+    : (insight.tags || []).filter(t => t && t.length >= 3 && t.length <= 28).slice(0, 5);
+  showInsight(result.name || "insight", result.summary, {
+    permanent: true,
+    tags: exploreTags,
+  });
 }
 
 function makeProjectile() {
@@ -4942,6 +4977,7 @@ async function generateFusion(topics) {
   "color": "#hexcolor blended from the parents",
   "cluster": "metaphysics|physical|systems|humanity",
   "tags": ["3-5 tags"],
+  "explore": ["3-5 short novel tag-like terms (1-3 words each) the user could click to spawn further entries. Each should be an adjacent territory the synthesis opens, not just a parent's name."],
   "planetTheme": {"type":"crystal|grid|plasma|mandala|flow|gas|cmb|circuit","params":{"hue":0.5,"accent":0.7,"density":1.0}},
   "card": {
     "punchline": "the sharp central sentence",
@@ -5071,8 +5107,14 @@ function finalizeFusion(chosenName) {
 
   document.getElementById("topicCount").textContent = TOPICS.length;
   clearStarSelection();
-  showInsight(chosenName, newTopic.summary || "a new branch has formed", 6500);
-  // warp in
+  const exploreTags = (Array.isArray(fusion.explore) && fusion.explore.length > 0)
+    ? fusion.explore.slice(0, 5)
+    : (newTopic.tags || []).filter(t => t && t.length >= 3 && t.length <= 28).slice(0, 5);
+  showInsight(chosenName, newTopic.summary || "a new branch has formed", {
+    permanent: true,
+    tags: exploreTags,
+  });
+  // warp in shortly after — user can dismiss the insight to explore the new star directly
   setTimeout(() => enterPlanet(newTopic.id), 1100);
 }
 
@@ -5094,7 +5136,8 @@ Reply ONLY with valid JSON, no fences:
   "name": "Short Title",
   "summary": "2-3 sentence poetic synthesis. The spoken kind.",
   "expansion": "One paragraph that develops the insight in more substantive language.",
-  "findings": ["one short insight", "another short insight"]
+  "findings": ["one short insight", "another short insight"],
+  "explore": ["3-5 short tag-like terms or phrases (1-3 words each) that the user could click to explore further. Each should be a NOVEL adjacent territory the synthesis opens up — not just restating the parents. Make them tantalizing."]
 }`;
 
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
