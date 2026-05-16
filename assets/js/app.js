@@ -51,6 +51,9 @@ const state = {
   collideMode: false,
   collideFirst: null,
   projectiles: [],
+  // multi-star fusion via shift-select
+  selectedStars: new Set(),
+  pendingFusion: null,
   // guide
   guideKey: localStorage.getItem("motu.guideKey") || "",
   guideHistory: [],
@@ -62,6 +65,8 @@ window.__motu = state; // debug handle
    Boot
    ============================================================ */
 window.addEventListener("DOMContentLoaded", () => {
+  // Build the chakra petal decorations before the boot animation runs.
+  buildChakraPetals();
   // Always schedule the boot dismissal FIRST — independent of whether init succeeds.
   // The chakra animation runs ~6s; the third-eye mask opens at 5s-7s; fade at 7.5s.
   scheduleBootDismiss();
@@ -114,6 +119,51 @@ function scheduleBootDismiss() {
   window.addEventListener("keydown", resumeOnGesture, { once: true });
 }
 
+/* Populate each chakra's petal decoration from data-attributes on the SVG.
+   Generated at boot init so the petals are present when chakras flare. */
+function buildChakraPetals() {
+  const groups = document.querySelectorAll(".boot-chakra-svg .petals");
+  if (!groups.length) return;
+  const svgNS = "http://www.w3.org/2000/svg";
+  for (const g of groups) {
+    const n = parseInt(g.dataset.petals || "0", 10);
+    const r = parseFloat(g.dataset.radius || "16");
+    const cy = parseFloat(g.dataset.cy || "0");
+    const color = g.dataset.color || "#a78bfa";
+    // wing-style for third eye: only two petals horizontally as wings
+    const isWings = g.classList.contains("petals-wings");
+    if (isWings) {
+      const left = document.createElementNS(svgNS, "ellipse");
+      left.setAttribute("cx", String(100 - r));
+      left.setAttribute("cy", String(cy));
+      left.setAttribute("rx", "12"); left.setAttribute("ry", "5");
+      left.setAttribute("fill", color);
+      left.setAttribute("opacity", "0.55");
+      g.appendChild(left);
+      const right = document.createElementNS(svgNS, "ellipse");
+      right.setAttribute("cx", String(100 + r));
+      right.setAttribute("cy", String(cy));
+      right.setAttribute("rx", "12"); right.setAttribute("ry", "5");
+      right.setAttribute("fill", color);
+      right.setAttribute("opacity", "0.55");
+      g.appendChild(right);
+      continue;
+    }
+    for (let i = 0; i < n; i++) {
+      const theta = (i / n) * Math.PI * 2;
+      const x = 100 + r * Math.sin(theta);
+      const y = cy - r * Math.cos(theta);
+      const dot = document.createElementNS(svgNS, "circle");
+      dot.setAttribute("cx", x.toFixed(2));
+      dot.setAttribute("cy", y.toFixed(2));
+      dot.setAttribute("r", "2.4");
+      dot.setAttribute("fill", color);
+      dot.setAttribute("opacity", "0.75");
+      g.appendChild(dot);
+    }
+  }
+}
+
 let _audioCtx = null;
 function getAudioContext() {
   if (_audioCtx) return _audioCtx;
@@ -125,24 +175,50 @@ function getAudioContext() {
   } catch (e) { return null; }
 }
 
-/* Seven crystal-bell tones ascending the chakra scale (C5 root → B5 crown).
-   Each tone has a primary sine + an octave sparkle harmonic, with a soft
-   attack and long exponential decay. They overlap into a C-major chord. */
+/* Seven crystal-bell tones spanning a FULL OCTAVE — C5 root → C6 crown.
+   The crown resolves on the octave above the root for a strong cadence.
+   Each tone has a primary sine + a chorus-detuned partner + an octave
+   sparkle harmonic through a low-pass for warmth. Long exponential
+   decay so they overlap into a slowly-building chord. */
 const CHAKRA_TONES = [
-  { freq: 523.25, when: 0.20 },  // C5 — root
-  { freq: 587.33, when: 0.60 },  // D5 — sacral
-  { freq: 659.25, when: 1.00 },  // E5 — solar
-  { freq: 698.46, when: 1.40 },  // F5 — heart
-  { freq: 783.99, when: 1.80 },  // G5 — throat
-  { freq: 880.00, when: 2.25 },  // A5 — third eye
-  { freq: 987.77, when: 2.65 },  // B5 — crown
+  { freq: 523.25,  when: 0.20 },  // C5  — root
+  { freq: 587.33,  when: 0.60 },  // D5  — sacral
+  { freq: 659.25,  when: 1.00 },  // E5  — solar plexus
+  { freq: 698.46,  when: 1.40 },  // F5  — heart
+  { freq: 783.99,  when: 1.80 },  // G5  — throat
+  { freq: 880.00,  when: 2.25 },  // A5  — third eye
+  { freq: 1046.50, when: 2.65 },  // C6  — crown (octave above root)
 ];
 
 function playBootChakraTones() {
   const ctx = getAudioContext();
   if (!ctx) return;
-  if (ctx.state === "suspended") ctx.resume().catch(() => {});
-  for (const t of CHAKRA_TONES) playGlassBell(ctx, t.freq, t.when);
+  const bootStartedAt = performance.now();
+
+  // Only schedule when the context is actually running; otherwise queued
+  // tones with stale timestamps fire all at once when it finally resumes.
+  const trySchedule = () => {
+    if (!ctx || ctx.state !== "running") return false;
+    const elapsedSec = (performance.now() - bootStartedAt) / 1000;
+    if (elapsedSec > 4) return false;  // too late — don't ring after the chakra phase
+    for (const t of CHAKRA_TONES) {
+      const adjusted = Math.max(0.0, t.when - elapsedSec);
+      playGlassBell(ctx, t.freq, adjusted);
+    }
+    return true;
+  };
+
+  if (trySchedule()) return;
+  // suspended — try resume now and retry, otherwise on first gesture
+  ctx.resume().then(() => trySchedule()).catch(() => {
+    const onGesture = () => {
+      ctx.resume().then(() => trySchedule()).catch(() => {});
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
+    };
+    window.addEventListener("pointerdown", onGesture, { once: true });
+    window.addEventListener("keydown", onGesture, { once: true });
+  });
 }
 
 function playGlassBell(ctx, freq, when) {
@@ -254,7 +330,12 @@ function initScene() {
   state.controls.panSpeed = 0.4;
   state.controls.minDistance = 6;
   state.controls.maxDistance = 80;
-  state.controls.addEventListener("start", () => { state.lastInteract = performance.now(); });
+  state.controls.autoRotate = false;       // toggled in the loop when idle in galaxy
+  state.controls.autoRotateSpeed = 0.42;   // a slow showcase orbit
+  state.controls.addEventListener("start", () => {
+    state.lastInteract = performance.now();
+    state.controls.autoRotate = false;
+  });
   state.controls.addEventListener("change", () => { state.lastInteract = performance.now(); });
 
   // ambient
@@ -265,7 +346,7 @@ function initScene() {
 
   window.addEventListener("resize", onResize);
   state.renderer.domElement.addEventListener("pointermove", onPointerMove);
-  state.renderer.domElement.addEventListener("click", onPointerClick);
+  state.renderer.domElement.addEventListener("click", (e) => onPointerClick(e));
   state.renderer.domElement.addEventListener("touchstart", (e) => {
     if (e.touches.length === 1) {
       onPointerMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
@@ -286,17 +367,65 @@ function onPointerMove(e) {
   state.pointerScreen = { x: e.clientX, y: e.clientY };
 }
 
-function onPointerClick() {
+function onPointerClick(e) {
   if (state.mode === "galaxy") {
+    // SHIFT+CLICK → toggle multi-star selection (or clear if not on a star)
+    if (e && e.shiftKey) {
+      if (state.hovered) {
+        toggleStarSelection(state.hovered);
+      } else {
+        clearStarSelection();
+      }
+      return;
+    }
     if (state.collideMode) {
       handleCollideClick();
       return;
     }
-    if (state.hovered) enterPlanet(state.hovered);
+    if (state.hovered) {
+      clearStarSelection();
+      enterPlanet(state.hovered);
+    } else if (state.selectedStars.size > 0 && !state.hovered) {
+      // clicking empty space when there's a selection: clear it
+      clearStarSelection();
+    }
   } else if (state.mode === "planet" && state.hoveredMoon) {
     const rec = state.moonMeshes.find(m => m.id === state.hoveredMoon);
     if (rec) enterMoon(rec);
   }
+}
+
+function toggleStarSelection(topicId) {
+  const node = state.topicMeshes.get(topicId);
+  if (!node) return;
+  if (state.selectedStars.has(topicId)) {
+    state.selectedStars.delete(topicId);
+    node.userData.selected = false;
+  } else {
+    state.selectedStars.add(topicId);
+    node.userData.selected = true;
+  }
+  updateSelectionHud();
+}
+
+function clearStarSelection() {
+  for (const id of state.selectedStars) {
+    const node = state.topicMeshes.get(id);
+    if (node) node.userData.selected = false;
+  }
+  state.selectedStars.clear();
+  updateSelectionHud();
+}
+
+function updateSelectionHud() {
+  const hud = document.getElementById("selectionHud");
+  const n = state.selectedStars.size;
+  if (n < 2) {
+    hud.hidden = true;
+    return;
+  }
+  hud.hidden = false;
+  document.getElementById("selectionCount").textContent = `${n} ideas selected`;
 }
 
 function handleCollideClick() {
@@ -1220,16 +1349,15 @@ function startLoop() {
     // starfield twinkle
     state.starfield.material.uniforms.uTime.value = t;
 
-    // turntable showcase rotation — always on in galaxy view, ramps back in after user input
-    if (state.mode === "galaxy" && state.topicGroup) {
+    // Camera orbit + background drift (we walk around the galaxy; it stays still).
+    if (state.mode === "galaxy") {
       const since = performance.now() - state.lastInteract;
-      // ease back to full speed over 1.8s after the user releases controls
-      const speedFactor = Math.min(1, since / 1800);
-      const baseSpeed = 0.055;
-      const rot = dt * baseSpeed * speedFactor;
-      state.topicGroup.rotation.y += rot;
-      if (state.edgeLines) state.edgeLines.rotation.y = state.topicGroup.rotation.y;
-      state.starfield.rotation.y -= rot * 0.16;  // gentle parallax counter-drift
+      // The camera orbits the galaxy via OrbitControls.autoRotate, enabled after idle.
+      state.controls.autoRotate = since > 1400;
+      // The starfield (background) drifts independently for cosmic motion.
+      state.starfield.rotation.y += dt * 0.012;
+    } else {
+      state.controls.autoRotate = false;
     }
 
     // advance any in-flight idea-cannonballs
@@ -1241,12 +1369,14 @@ function startLoop() {
       const s = 1 + 0.06 * Math.sin(phase);
       node.userData.ring.scale.setScalar(s);
       node.userData.ring.material.opacity = 0.18 + 0.1 * (0.5 + 0.5 * Math.sin(phase));
-      // corona breath if present
+      // corona breath if present — selected stars get an enlarged + brighter corona
       if (node.userData.corona) {
         const breath = 1 + 0.18 * Math.sin(t * 0.9 + node.position.z * 0.4);
-        const baseScale = node.userData.size * 10;
+        const isSelected = !!node.userData.selected;
+        const baseScale = node.userData.size * (isSelected ? 16 : 10);
         node.userData.corona.scale.set(baseScale * breath, baseScale * breath, 1);
-        node.userData.corona.material.opacity = 0.55 + 0.25 * Math.sin(t * 0.55 + node.position.x);
+        const op = isSelected ? 0.85 : (0.55 + 0.25 * Math.sin(t * 0.55 + node.position.x));
+        node.userData.corona.material.opacity = op;
       }
       // gentle bobbing
       node.position.y += Math.sin(t * 0.4 + node.position.x) * 0.0006;
@@ -3046,6 +3176,21 @@ function attachUI() {
     state.mode = "transit";
     state.afterTransit = "galaxy";
   });
+  // multi-star fusion HUD
+  document.getElementById("selectionClear").addEventListener("click", clearStarSelection);
+  document.getElementById("selectionFuse").addEventListener("click", fireMultiFusion);
+  document.getElementById("customTitleBtn").addEventListener("click", () => {
+    const v = document.getElementById("customTitleInput").value.trim();
+    if (v) finalizeFusion(v);
+  });
+  document.getElementById("customTitleInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const v = e.target.value.trim();
+      if (v) finalizeFusion(v);
+    }
+  });
+
   document.getElementById("btn-collide").addEventListener("click", () => {
     if (state.mode !== "galaxy") {
       toast("collide from the galaxy view");
@@ -3075,12 +3220,19 @@ function attachUI() {
   document.querySelectorAll("[data-close-modal]").forEach(b => {
     b.addEventListener("click", closeAllModals);
   });
-  // ESC closes
+  // ESC closes modals AND clears multi-star selection
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeAllModals();
+    if (e.key === "Escape") {
+      closeAllModals();
+      if (state.selectedStars.size > 0) clearStarSelection();
+    }
     if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
       e.preventDefault();
       openGuide();
+    }
+    // Enter triggers fuse if 2+ selected
+    if (e.key === "Enter" && state.selectedStars.size >= 2 && state.mode === "galaxy" && !e.target.matches("input, textarea")) {
+      fireMultiFusion();
     }
   });
 
@@ -4116,6 +4268,190 @@ function blendColors(a, b) {
   out.g = Math.min(1, out.g * 1.15);
   out.b = Math.min(1, out.b * 1.15);
   return "#" + out.getHexString();
+}
+
+/* ============================================================
+   Multi-star fusion — shift-select 2+ stars, then "fuse"
+   The Librarian generates a synthesis + 3-4 title options; the
+   user picks one (or writes their own) to branch a new star.
+   ============================================================ */
+
+async function fireMultiFusion() {
+  if (state.selectedStars.size < 2) return;
+  if (!state.guideKey) {
+    toast("connect The Librarian to fuse ideas (paste API key in guide chat)");
+    openGuide();
+    return;
+  }
+  const topics = [...state.selectedStars].map(id => topicById(id)).filter(Boolean);
+  if (topics.length < 2) { clearStarSelection(); return; }
+
+  showGenerationOverlay(`fusing ${topics.length} ideas`, "Consulting The Librarian");
+  state.generatingNow = true;
+  try {
+    const fusion = await generateFusion(topics);
+    state.pendingFusion = { topics, fusion };
+    hideGenerationOverlay();
+    showTitleChooser(topics, fusion);
+  } catch (err) {
+    hideGenerationOverlay();
+    toast(`fusion failed: ${err.message?.slice(0, 80) || "unknown"}`);
+  } finally {
+    state.generatingNow = false;
+  }
+}
+
+async function generateFusion(topics) {
+  const parts = [
+    `${topics.length} ideas from the library are being fused into a new star. Forge their genuine synthesis.`,
+    topics.map((t, i) => `${i+1}. ${t.name}\n   summary: ${t.summary}\n   conclusion: ${t.conclusion}`).join("\n\n"),
+    `Write the synthesis as a brand-new top-level entry. The new entry should:
+- Find the genuine intellectual intersection of ALL ${topics.length} parents
+- Open new territory at the meeting point — not be a summary, sum, or recap
+- Match the library's tone: distillation-focused, calibrated, neither breathless nor dismissive`,
+  ];
+  const listenCtx = listenContextForPrompt();
+  if (listenCtx) parts.push(listenCtx);
+  parts.push(`Reply ONLY with JSON in this exact shape:
+{
+  "name_options": ["3-4 candidate titles, ranging from descriptive to poetic"],
+  "summary": "one sentence summary",
+  "conclusion": "one-line distillation",
+  "color": "#hexcolor blended from the parents",
+  "cluster": "metaphysics|physical|systems|humanity",
+  "tags": ["3-5 tags"],
+  "planetTheme": {"type":"crystal|grid|plasma|mandala|flow|gas|cmb|circuit","params":{"hue":0.5,"accent":0.7,"density":1.0}},
+  "card": {
+    "punchline": "the sharp central sentence",
+    "propositions": ["4-5 dense, load-bearing claims"],
+    "hypotheses": ["2-3 if-then or open conjectures"],
+    "facts": ["2-3 specific facts"],
+    "seeAlso": [{"id":"existing-topic-id","name":"Name","why":"reason"}]
+  },
+  "conclusionBody": [{"type":"p","text":"opening"},{"type":"h4","text":"section"},{"type":"ul","items":["bullet"]},{"type":"p","text":"closing"}],
+  "documents": [{
+    "id":"doc-slug","type":"synthesis","title":"Doc Title","author":"forged · 2026",
+    "summary":"1-2 sentences","findings":["finding","finding"],
+    "prose":["paragraph","paragraph"],
+    "sources":[{"label":"...","url":"https://..."}]
+  }]
+}`);
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": state.guideKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-opus-4-7",
+      max_tokens: 8000,
+      messages: [{ role: "user", content: parts.join("\n\n") }],
+    }),
+  });
+  if (!resp.ok) throw new Error(`API ${resp.status}: ${(await resp.text()).slice(0,200)}`);
+  const data = await resp.json();
+  let text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("\n").trim();
+  text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  const first = text.indexOf("{"), last = text.lastIndexOf("}");
+  if (first >= 0 && last > first) text = text.slice(first, last + 1);
+  return JSON.parse(text);
+}
+
+function showTitleChooser(topics, fusion) {
+  const names = topics.map(t => t.name).join(", ");
+  document.getElementById("titleIntro").textContent = `A synthesis born of ${names}. Pick a title — or write your own.`;
+  const optsEl = document.getElementById("titleOptions");
+  optsEl.innerHTML = "";
+  const options = (fusion.name_options || []).slice(0, 4);
+  for (const name of options) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "title-option-btn";
+    btn.textContent = name;
+    btn.addEventListener("click", () => finalizeFusion(name));
+    optsEl.appendChild(btn);
+  }
+  document.getElementById("customTitleInput").value = "";
+  // preview
+  document.getElementById("synthPunchline").textContent = fusion.card?.punchline || fusion.conclusion || fusion.summary || "";
+  const propsUl = document.getElementById("synthPropositions");
+  propsUl.innerHTML = "";
+  for (const p of (fusion.card?.propositions || []).slice(0, 4)) {
+    const li = document.createElement("li");
+    li.textContent = p;
+    propsUl.appendChild(li);
+  }
+  document.getElementById("modal-titleChooser").hidden = false;
+}
+
+function finalizeFusion(chosenName) {
+  if (!state.pendingFusion) return;
+  const { topics, fusion } = state.pendingFusion;
+  state.pendingFusion = null;
+  document.getElementById("modal-titleChooser").hidden = true;
+
+  // centroid position with a small vertical lift so it doesn't sit on existing edges
+  const pos = [0, 0, 0];
+  for (const t of topics) {
+    pos[0] += t.position[0]; pos[1] += t.position[1]; pos[2] += t.position[2];
+  }
+  pos[0] /= topics.length; pos[1] /= topics.length; pos[2] /= topics.length;
+  pos[1] += 1.0;
+  // nudge if too close to an existing star
+  for (const t of TOPICS) {
+    const dx = pos[0]-t.position[0], dy = pos[1]-t.position[1], dz = pos[2]-t.position[2];
+    if (Math.sqrt(dx*dx + dy*dy + dz*dz) < 3) {
+      pos[0] += 1.5; pos[1] += 1.5; pos[2] += 1.5;
+      break;
+    }
+  }
+
+  // blended color from parents
+  const tmp = new THREE.Color(0,0,0);
+  for (const t of topics) tmp.add(new THREE.Color(t.color));
+  tmp.multiplyScalar(1 / topics.length);
+  // brighten slightly so syntheses stand out
+  tmp.r = Math.min(1, tmp.r * 1.12);
+  tmp.g = Math.min(1, tmp.g * 1.12);
+  tmp.b = Math.min(1, tmp.b * 1.12);
+  const blendedColor = "#" + tmp.getHexString();
+
+  const id = `fusion-${chosenName.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}-${Date.now().toString(36).slice(-4)}`;
+  const newTopic = {
+    id,
+    name: chosenName,
+    cluster: fusion.cluster || "metaphysics",
+    color: fusion.color || blendedColor,
+    position: pos,
+    size: 0.9,
+    tags: fusion.tags || ["synthesis", ...topics.map(t => t.name.toLowerCase()).slice(0, 3)],
+    summary: fusion.summary || "",
+    conclusion: fusion.conclusion || fusion.summary || "",
+    conclusionBody: fusion.conclusionBody || [{ type: "p", text: fusion.summary || "" }],
+    planetTheme: fusion.planetTheme || { type: "crystal", params: { hue: 0.78, accent: 0.85, facets: 6.0 } },
+    card: fusion.card || null,
+    documents: fusion.documents || [],
+    isSynthesis: true,
+    parents: topics.map(t => t.id),
+  };
+
+  registerGeneratedTopic(newTopic);
+  persistTopic(newTopic);
+  addTopicNode(newTopic);
+  // wire edges to every parent
+  for (const parent of topics) {
+    if (registerGeneratedEdge(newTopic.id, parent.id)) persistEdge(newTopic.id, parent.id);
+  }
+  rebuildEdges();
+
+  document.getElementById("topicCount").textContent = TOPICS.length;
+  clearStarSelection();
+  showInsight(chosenName, newTopic.summary || "a new branch has formed", 6500);
+  // warp in
+  setTimeout(() => enterPlanet(newTopic.id), 1100);
 }
 
 async function generateSynthesis(a, b) {

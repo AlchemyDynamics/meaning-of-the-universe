@@ -79,8 +79,33 @@ em { color: var(--ink-0); font-style: italic; }
 }
 .boot-chakra-svg { width: 100%; height: 100%; }
 
-/* Each chakra lights up as the camera passes through it.
-   Glow handled by stroke + opacity, not drop-shadow filters (kept light). */
+/* The shadowy silhouetted figure we descend into */
+.boot-figure { opacity: 0; animation: figureFade 5s ease-in forwards; }
+@keyframes figureFade {
+  0%   { opacity: 0; }
+  20%  { opacity: 0.55; }
+  90%  { opacity: 0.7; }
+  100% { opacity: 0.2; }
+}
+
+/* Each chakra-wrap rotates slowly so the petals turn around the core */
+.chakra-wrap { animation: chakraWrapSpin 48s linear infinite; }
+@keyframes chakraWrapSpin { to { transform: rotate(360deg); } }
+.chakra-wrap .petals { opacity: 0; animation: petalsFadeIn 1.4s ease forwards; }
+.chakra-wrap[data-chakra="c-root"]     .petals { animation-delay: 0.05s; }
+.chakra-wrap[data-chakra="c-sacral"]   .petals { animation-delay: 0.45s; }
+.chakra-wrap[data-chakra="c-solar"]    .petals { animation-delay: 0.85s; }
+.chakra-wrap[data-chakra="c-heart"]    .petals { animation-delay: 1.25s; }
+.chakra-wrap[data-chakra="c-throat"]   .petals { animation-delay: 1.65s; }
+.chakra-wrap[data-chakra="c-thirdeye"] .petals { animation-delay: 2.10s; }
+.chakra-wrap[data-chakra="c-crown"]    .petals { animation-delay: 2.50s; }
+@keyframes petalsFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 0.85; }
+}
+.petals circle { filter: url(#chakraGlow); }
+
+/* Each chakra lights up as the camera passes through it. */
 .chakra { opacity: 0.18; transition: opacity 0.4s ease; }
 .chakra.c-root     { animation: chakraFlare 0.9s ease 0.15s both; }
 .chakra.c-sacral   { animation: chakraFlare 0.9s ease 0.55s both; }
@@ -265,6 +290,93 @@ em { color: var(--ink-0); font-style: italic; }
   box-shadow: 0 0 6px currentColor;
 }
 .star-label.hidden { display: none; }
+
+/* ============================================================
+   Multi-star selection HUD
+   ============================================================ */
+.selection-hud {
+  position: fixed;
+  top: 72px; left: 50%; transform: translateX(-50%);
+  z-index: 22;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px;
+  background: linear-gradient(160deg, rgba(20,15,45,0.85), rgba(8,8,22,0.92));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 30px rgba(167,139,250,0.25);
+  animation: fadeIn 0.25s ease;
+}
+.sel-glyph { color: var(--accent); font-size: 14px; }
+.sel-count { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; color: var(--ink-0); }
+.sel-divider { width: 1px; height: 14px; background: var(--line); }
+.sel-btn {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: lowercase;
+  color: var(--ink-1);
+  padding: 5px 12px; border-radius: 999px;
+  background: transparent; border: 1px solid var(--line);
+}
+.sel-btn:hover { background: rgba(167,139,250,0.1); color: var(--ink-0); border-color: var(--line-2); }
+.sel-btn-primary {
+  background: rgba(167,139,250,0.22); color: var(--ink-0); border-color: var(--accent);
+}
+.sel-btn-primary:hover { background: rgba(167,139,250,0.38); }
+
+/* Title chooser modal */
+.title-intro { font-family: var(--serif); font-style: italic; color: var(--ink-2); margin-bottom: 18px; }
+.title-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.title-option-btn {
+  text-align: left;
+  font-family: var(--serif); font-size: 19px;
+  color: var(--ink-0);
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: rgba(167,139,250,0.05);
+  border: 1px solid var(--line);
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.title-option-btn:hover {
+  background: rgba(167,139,250,0.14);
+  border-color: var(--accent);
+  transform: translateX(2px);
+}
+.custom-title-row {
+  display: flex; gap: 8px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 14px;
+}
+.custom-title-row input {
+  flex: 1;
+  background: rgba(0,0,0,0.4); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 14px;
+  color: var(--ink-0);
+  font-family: var(--serif); font-size: 16px;
+}
+.custom-title-row input:focus { outline: none; border-color: var(--accent); }
+.synth-preview { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; color: var(--ink-2); }
+.synth-preview summary { cursor: pointer; padding: 4px 0; text-transform: lowercase; }
+.synth-preview summary:hover { color: var(--ink-0); }
+.synth-punchline {
+  margin-top: 10px;
+  font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.5;
+  color: var(--ink-0); letter-spacing: 0; text-transform: none;
+}
+.synth-propositions {
+  list-style: none; padding: 0; margin: 10px 0 0;
+}
+.synth-propositions li {
+  font-family: var(--sans); font-size: 13px; line-height: 1.5;
+  color: var(--ink-1);
+  padding: 4px 0 4px 18px;
+  position: relative;
+  letter-spacing: 0; text-transform: none;
+}
+.synth-propositions li::before {
+  content: "·"; position: absolute; left: 4px;
+  color: var(--accent); font-size: 18px;
+}
 
 /* ============================================================
    Tooltip
