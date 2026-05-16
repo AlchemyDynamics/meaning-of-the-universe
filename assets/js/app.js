@@ -44,8 +44,13 @@ const state = {
   cameraTargetLook: new THREE.Vector3(0, 0, 0),
   clock: new THREE.Clock(),
   edgesVisible: true,
+  lastInteract: 0,
   // remembered camera pose to restore on return
   savedCam: { pos: new THREE.Vector3(), look: new THREE.Vector3() },
+  // cosmic simulation / cannonball
+  collideMode: false,
+  collideFirst: null,
+  projectiles: [],
   // guide
   guideKey: localStorage.getItem("motu.guideKey") || "",
   guideHistory: [],
@@ -69,10 +74,11 @@ window.addEventListener("DOMContentLoaded", () => {
   setupSettingsPanel();
   bindTTSButtons();
   startLoop();
+  // chakra ascent runs ~7s; begin fade at ~6.4s so the third-eye portal blooms into the starfield
   setTimeout(() => {
     document.getElementById("boot").classList.add("fade");
-    setTimeout(() => document.getElementById("boot").remove(), 1400);
-  }, 4000);
+    setTimeout(() => { const b = document.getElementById("boot"); if (b) b.remove(); }, 1400);
+  }, 6400);
   document.getElementById("topicCount").textContent = TOPICS.length;
   document.getElementById("docCount").textContent = TOPICS.reduce((a, t) => a + t.documents.length, 0);
 });
@@ -121,6 +127,8 @@ function initScene() {
   state.controls.panSpeed = 0.4;
   state.controls.minDistance = 6;
   state.controls.maxDistance = 80;
+  state.controls.addEventListener("start", () => { state.lastInteract = performance.now(); });
+  state.controls.addEventListener("change", () => { state.lastInteract = performance.now(); });
 
   // ambient
   state.scene.add(new THREE.AmbientLight(0x404466, 0.6));
@@ -153,11 +161,33 @@ function onPointerMove(e) {
 
 function onPointerClick() {
   if (state.mode === "galaxy") {
+    if (state.collideMode) {
+      handleCollideClick();
+      return;
+    }
     if (state.hovered) enterPlanet(state.hovered);
   } else if (state.mode === "planet" && state.hoveredMoon) {
     const rec = state.moonMeshes.find(m => m.id === state.hoveredMoon);
     if (rec) enterMoon(rec);
   }
+}
+
+function handleCollideClick() {
+  if (!state.hovered) return;
+  if (!state.collideFirst) {
+    state.collideFirst = state.hovered;
+    const node = state.topicMeshes.get(state.hovered);
+    if (node) node.userData.corona?.scale.set(node.userData.size * 16, node.userData.size * 16, 1);
+    showCollideBanner(`now aim at a second idea — colliding with “${topicById(state.hovered).name}”`);
+    return;
+  }
+  if (state.hovered === state.collideFirst) {
+    toast("pick a different idea");
+    return;
+  }
+  const a = state.collideFirst, b = state.hovered;
+  exitCollideMode();
+  fireCollision(a, b);
 }
 
 /* ============================================================
@@ -226,6 +256,9 @@ function buildStarfield() {
   state.starfield = new THREE.Points(geo, mat);
   state.scene.add(state.starfield);
 
+  // distant nebula clouds for cosmic depth
+  buildNebulae();
+
   // a faint galactic disk haze
   const hazeGeo = new THREE.RingGeometry(40, 200, 64);
   const hazeMat = new THREE.MeshBasicMaterial({
@@ -244,53 +277,125 @@ function buildStarfield() {
 /* ============================================================
    Topic nodes
    ============================================================ */
+/* Build a single topic node — used both at boot and for AI-generated stars. */
+function makeTopicNode(topic) {
+  const colorObj = new THREE.Color(topic.color);
+  const size = topic.size || 1.0;
+
+  // soft outer corona (slowly breathing)
+  const coronaMat = new THREE.SpriteMaterial({
+    map: makeGlowTexture(colorObj),
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const corona = new THREE.Sprite(coronaMat);
+  corona.scale.set(10 * size, 10 * size, 1);
+
+  // tighter halo for definition
+  const haloMat = new THREE.SpriteMaterial({
+    map: makeGlowTexture(colorObj),
+    color: 0xffffff,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const halo = new THREE.Sprite(haloMat);
+  halo.scale.set(5.5 * size, 5.5 * size, 1);
+
+  // core sphere
+  const coreGeo = new THREE.SphereGeometry(0.6 * size, 24, 24);
+  const coreMat = new THREE.MeshBasicMaterial({ color: colorObj });
+  const core = new THREE.Mesh(coreGeo, coreMat);
+
+  // pulse ring
+  const ringGeo = new THREE.RingGeometry(1.0 * size, 1.05 * size, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: colorObj, transparent: true, opacity: 0.25, side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+
+  const node = new THREE.Group();
+  node.add(corona, halo, core, ring);
+  node.position.set(...topic.position);
+  node.userData = { topicId: topic.id, core, halo, ring, corona, baseColor: colorObj.clone(), size };
+  return node;
+}
+
 function buildTopicNodes() {
   setBootStatus("placing the topic-stars…");
   const group = new THREE.Group();
 
   for (const topic of TOPICS) {
-    const colorObj = new THREE.Color(topic.color);
-
-    // glow halo (sprite)
-    const haloMat = new THREE.SpriteMaterial({
-      map: makeGlowTexture(colorObj),
-      color: 0xffffff,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const halo = new THREE.Sprite(haloMat);
-    halo.scale.set(6 * topic.size, 6 * topic.size, 1);
-
-    // core sphere
-    const coreGeo = new THREE.SphereGeometry(0.6 * topic.size, 24, 24);
-    const coreMat = new THREE.MeshBasicMaterial({ color: colorObj });
-    const core = new THREE.Mesh(coreGeo, coreMat);
-
-    // pulse ring
-    const ringGeo = new THREE.RingGeometry(1.0 * topic.size, 1.05 * topic.size, 48);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: colorObj, transparent: true, opacity: 0.25, side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-
-    const node = new THREE.Group();
-    node.add(halo, core, ring);
-    node.position.set(...topic.position);
-    node.userData.topicId = topic.id;
-    node.userData.core = core;
-    node.userData.halo = halo;
-    node.userData.ring = ring;
-    node.userData.baseColor = colorObj.clone();
-    node.userData.size = topic.size;
-
+    const node = makeTopicNode(topic);
     group.add(node);
     state.topicMeshes.set(topic.id, node);
   }
 
   state.scene.add(group);
   state.topicGroup = group;
+}
+
+function buildNebulae() {
+  const colors = [
+    new THREE.Color("#5b3aff"),
+    new THREE.Color("#a04bff"),
+    new THREE.Color("#3a6dff"),
+    new THREE.Color("#ff6da3"),
+    new THREE.Color("#ffb04a"),
+  ];
+  for (let i = 0; i < 9; i++) {
+    const c = colors[i % colors.length];
+    const tex = makeNebulaTexture(c);
+    const mat = new THREE.SpriteMaterial({
+      map: tex, color: 0xffffff, transparent: true, opacity: 0.20,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    const r = 180 + Math.random() * 200;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    sprite.position.set(
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.sin(phi) * Math.sin(theta) * 0.6,
+      r * Math.cos(phi),
+    );
+    const s = 120 + Math.random() * 160;
+    sprite.scale.set(s, s, 1);
+    state.scene.add(sprite);
+  }
+}
+
+function makeNebulaTexture(color) {
+  const size = 512;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
+  // base radial fade
+  const g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  const hex = "#" + color.getHexString();
+  g.addColorStop(0.0, hexWithAlpha(hex, 0.55));
+  g.addColorStop(0.4, hexWithAlpha(hex, 0.30));
+  g.addColorStop(0.7, hexWithAlpha(hex, 0.10));
+  g.addColorStop(1.0, hexWithAlpha(hex, 0.0));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  // wispy noise: scatter low-alpha blobs
+  for (let i = 0; i < 80; i++) {
+    const x = Math.random() * size, y = Math.random() * size;
+    const r = 20 + Math.random() * 80;
+    const lg = ctx.createRadialGradient(x, y, 0, x, y, r);
+    lg.addColorStop(0, hexWithAlpha(hex, 0.16));
+    lg.addColorStop(1, hexWithAlpha(hex, 0.0));
+    ctx.fillStyle = lg;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
 }
 
 function makeGlowTexture(color) {
@@ -814,12 +919,32 @@ function startLoop() {
     // starfield twinkle
     state.starfield.material.uniforms.uTime.value = t;
 
-    // node pulsing
+    // slow idle galaxy rotation (resumes a few seconds after last user input)
+    if (state.mode === "galaxy" && state.topicGroup) {
+      const idleFor = performance.now() - state.lastInteract;
+      if (idleFor > 2500) {
+        state.topicGroup.rotation.y += dt * 0.035;
+        if (state.edgeLines) state.edgeLines.rotation.y = state.topicGroup.rotation.y;
+        state.starfield.rotation.y -= dt * 0.006;  // parallax counter-drift
+      }
+    }
+
+    // advance any in-flight idea-cannonballs
+    advanceProjectiles(dt, t);
+
+    // node pulsing — corona breath + ring
     for (const [, node] of state.topicMeshes) {
       const phase = t * 0.6 + node.position.x * 0.3;
       const s = 1 + 0.06 * Math.sin(phase);
       node.userData.ring.scale.setScalar(s);
       node.userData.ring.material.opacity = 0.18 + 0.1 * (0.5 + 0.5 * Math.sin(phase));
+      // corona breath if present
+      if (node.userData.corona) {
+        const breath = 1 + 0.18 * Math.sin(t * 0.9 + node.position.z * 0.4);
+        const baseScale = node.userData.size * 10;
+        node.userData.corona.scale.set(baseScale * breath, baseScale * breath, 1);
+        node.userData.corona.material.opacity = 0.55 + 0.25 * Math.sin(t * 0.55 + node.position.x);
+      }
       // gentle bobbing
       node.position.y += Math.sin(t * 0.4 + node.position.x) * 0.0006;
     }
@@ -2121,6 +2246,14 @@ function attachUI() {
     state.mode = "transit";
     state.afterTransit = "galaxy";
   });
+  document.getElementById("btn-collide").addEventListener("click", () => {
+    if (state.mode !== "galaxy") {
+      toast("collide from the galaxy view");
+      return;
+    }
+    if (state.collideMode) { exitCollideMode(); }
+    else { enterCollideMode(); }
+  });
   document.getElementById("btn-toggle-edges").addEventListener("click", () => {
     state.edgesVisible = !state.edgesVisible;
     state.edgeLines.visible = state.edgesVisible && state.mode === "galaxy";
@@ -2912,28 +3045,7 @@ function findEmptyPosition() {
 }
 
 function addTopicNode(topic) {
-  const colorObj = new THREE.Color(topic.color);
-  const haloMat = new THREE.SpriteMaterial({
-    map: makeGlowTexture(colorObj),
-    color: 0xffffff, transparent: true,
-    blending: THREE.AdditiveBlending, depthWrite: false,
-  });
-  const halo = new THREE.Sprite(haloMat);
-  const size = topic.size || 1.0;
-  halo.scale.set(6 * size, 6 * size, 1);
-  const coreGeo = new THREE.SphereGeometry(0.6 * size, 24, 24);
-  const coreMat = new THREE.MeshBasicMaterial({ color: colorObj });
-  const core = new THREE.Mesh(coreGeo, coreMat);
-  const ringGeo = new THREE.RingGeometry(1.0 * size, 1.05 * size, 48);
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: colorObj, transparent: true, opacity: 0.25, side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending, depthWrite: false,
-  });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
-  const node = new THREE.Group();
-  node.add(halo, core, ring);
-  node.position.set(...topic.position);
-  node.userData = { topicId: topic.id, core, halo, ring, baseColor: colorObj.clone(), size };
+  const node = makeTopicNode(topic);
   state.topicGroup.add(node);
   state.topicMeshes.set(topic.id, node);
 
@@ -2946,6 +3058,263 @@ function addTopicNode(topic) {
     if (s < 1) requestAnimationFrame(tick);
   };
   tick();
+}
+
+/* ============================================================
+   Cannonball collision system — fire ideas at each other.
+   Two stars collide, a poetic synthesis is born as a new star.
+   ============================================================ */
+
+function enterCollideMode() {
+  state.collideMode = true;
+  state.collideFirst = null;
+  document.getElementById("btn-collide").classList.add("active");
+  showCollideBanner("select the first idea");
+  document.body.style.cursor = "crosshair";
+}
+function exitCollideMode() {
+  state.collideMode = false;
+  if (state.collideFirst) {
+    const node = state.topicMeshes.get(state.collideFirst);
+    if (node) node.userData.corona?.scale.set(node.userData.size * 10, node.userData.size * 10, 1);
+  }
+  state.collideFirst = null;
+  document.getElementById("btn-collide").classList.remove("active");
+  hideCollideBanner();
+  document.body.style.cursor = "";
+}
+function showCollideBanner(text) {
+  let b = document.getElementById("collideBanner");
+  if (!b) {
+    b = document.createElement("div");
+    b.id = "collideBanner";
+    b.className = "collide-banner";
+    document.body.appendChild(b);
+  }
+  b.textContent = text;
+  b.classList.remove("hidden");
+}
+function hideCollideBanner() {
+  const b = document.getElementById("collideBanner");
+  if (b) b.classList.add("hidden");
+}
+
+function showInsight(title, text, durationMs = 6500) {
+  let label = document.getElementById("insightLabel");
+  if (!label) {
+    label = document.createElement("div");
+    label.id = "insightLabel";
+    label.className = "insight-label";
+    document.body.appendChild(label);
+  }
+  label.innerHTML = `<span class="insight-title">${escapeHtml(title)}</span>${escapeHtml(text)}`;
+  // force reflow then show
+  void label.offsetWidth;
+  label.classList.add("show");
+  clearTimeout(state._insightTimer);
+  state._insightTimer = setTimeout(() => label.classList.remove("show"), durationMs);
+}
+
+async function fireCollision(firstId, secondId) {
+  const a = topicById(firstId), b = topicById(secondId);
+  if (!a || !b) return;
+
+  // start launching projectile visually
+  const start = new THREE.Vector3(...a.position);
+  const end = new THREE.Vector3(...b.position);
+  const mesh = makeProjectile();
+  mesh.position.copy(start);
+  state.scene.add(mesh);
+
+  // promise that resolves on arrival
+  let onArrive;
+  const arrived = new Promise(r => { onArrive = r; });
+  state.projectiles.push({ mesh, start, end, progress: 0, duration: 1.6, onArrive });
+
+  // kick off synthesis fetch in parallel
+  const synthFetch = state.guideKey
+    ? generateSynthesis(a, b).catch(e => ({ error: e }))
+    : Promise.resolve({ error: new Error("Connect The Librarian to forge insights") });
+
+  // wait for projectile arrival
+  await arrived;
+  state.scene.remove(mesh);
+  spawnImpactFlash(end, a.color, b.color);
+
+  // wait for synthesis to complete
+  showCollideBanner("forging insight…");
+  const result = await synthFetch;
+  hideCollideBanner();
+
+  if (result?.error) {
+    toast(`collision dissipated: ${result.error.message?.slice(0,80) || "no synthesis"}`);
+    return;
+  }
+
+  // spawn the new insight star at the midpoint
+  const midPos = [
+    (a.position[0] + b.position[0]) / 2,
+    (a.position[1] + b.position[1]) / 2,
+    (a.position[2] + b.position[2]) / 2,
+  ];
+  // gentle nudge so the insight doesn't sit exactly on an existing edge
+  midPos[1] += 0.8;
+
+  const insightId = `insight-${a.id}-${b.id}-${Date.now().toString(36)}`;
+  const insight = {
+    id: insightId,
+    name: result.name || `${a.name} × ${b.name}`,
+    cluster: "metaphysics",
+    color: blendColors(a.color, b.color),
+    position: midPos,
+    size: 0.75,
+    tags: ["synthesis", a.name.toLowerCase(), b.name.toLowerCase()],
+    summary: result.summary,
+    conclusion: result.summary,
+    conclusionBody: [
+      { type: "p", text: result.summary },
+      { type: "h4", text: "born of collision" },
+      { type: "ul", items: [a.name, b.name] },
+      { type: "p", text: result.expansion || "" },
+    ],
+    planetTheme: { type: "crystal", params: { hue: 0.78, accent: 0.92, facets: 7.0 } },
+    documents: result.expansion ? [{
+      id: `${insightId}-syn`,
+      type: "synthesis",
+      title: `${result.name || "Insight"} — synthesis`,
+      author: `forged from ${a.name} × ${b.name}`,
+      summary: result.summary,
+      findings: result.findings || [],
+      prose: [result.expansion],
+    }] : [],
+    isSynthesis: true,
+  };
+
+  registerGeneratedTopic(insight);
+  persistTopic(insight);
+  addTopicNode(insight);
+
+  if (registerGeneratedEdge(insight.id, a.id)) persistEdge(insight.id, a.id);
+  if (registerGeneratedEdge(insight.id, b.id)) persistEdge(insight.id, b.id);
+  rebuildEdges();
+
+  document.getElementById("topicCount").textContent = TOPICS.length;
+  showInsight(result.name || "insight", result.summary, 7000);
+}
+
+function makeProjectile() {
+  const group = new THREE.Group();
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffffff })
+  );
+  const haloMat = new THREE.SpriteMaterial({
+    map: makeGlowTexture(new THREE.Color("#ffffff")),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const halo = new THREE.Sprite(haloMat);
+  halo.scale.set(1.8, 1.8, 1);
+  group.add(core, halo);
+  return group;
+}
+
+function advanceProjectiles(dt, t) {
+  for (let i = state.projectiles.length - 1; i >= 0; i--) {
+    const p = state.projectiles[i];
+    p.progress += dt / p.duration;
+    if (p.progress >= 1) {
+      p.mesh.position.copy(p.end);
+      if (p.onArrive) p.onArrive();
+      state.projectiles.splice(i, 1);
+      continue;
+    }
+    const e = p.progress * p.progress * (3 - 2 * p.progress);
+    p.mesh.position.lerpVectors(p.start, p.end, e);
+    // small slerp arc: lift slightly off the direct line
+    const arc = Math.sin(p.progress * Math.PI) * 0.6;
+    p.mesh.position.y += arc;
+  }
+}
+
+function spawnImpactFlash(pos, colorA, colorB) {
+  const flashColor = new THREE.Color(blendColors(colorA, colorB));
+  const mat = new THREE.SpriteMaterial({
+    map: makeGlowTexture(flashColor),
+    color: 0xffffff,
+    transparent: true,
+    opacity: 1,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const s = new THREE.Sprite(mat);
+  s.position.copy(pos);
+  s.scale.set(0.5, 0.5, 1);
+  state.scene.add(s);
+  let p = 0;
+  const tick = () => {
+    p += 0.035;
+    s.scale.setScalar(0.5 + p * 22);
+    s.material.opacity = Math.max(0, 1 - p);
+    if (p < 1) requestAnimationFrame(tick);
+    else { state.scene.remove(s); s.material.dispose(); s.material.map.dispose(); }
+  };
+  tick();
+}
+
+function blendColors(a, b) {
+  const ca = new THREE.Color(a), cb = new THREE.Color(b);
+  const out = ca.clone().lerp(cb, 0.5);
+  // brighten a touch so insights stand out
+  out.r = Math.min(1, out.r * 1.15);
+  out.g = Math.min(1, out.g * 1.15);
+  out.b = Math.min(1, out.b * 1.15);
+  return "#" + out.getHexString();
+}
+
+async function generateSynthesis(a, b) {
+  const prompt = `Two ideas from the library have collided. Forge their synthesis.
+
+A: ${a.name}
+  ${a.summary}
+  conclusion: ${a.conclusion}
+
+B: ${b.name}
+  ${b.summary}
+  conclusion: ${b.conclusion}
+
+Write a short, poetic synthesis (2-3 sentences) that captures the genuine insight where these meet — not a sum of the parts, the spark between them. Then provide a 1-4 word title for the synthesis, and a longer expansion (one paragraph) that develops the idea further.
+
+Reply ONLY with valid JSON, no fences:
+{
+  "name": "Short Title",
+  "summary": "2-3 sentence poetic synthesis. The spoken kind.",
+  "expansion": "One paragraph that develops the insight in more substantive language.",
+  "findings": ["one short insight", "another short insight"]
+}`;
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": state.guideKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-opus-4-7",
+      max_tokens: 1200,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!resp.ok) throw new Error(`API ${resp.status}: ${(await resp.text()).slice(0,150)}`);
+  const data = await resp.json();
+  let text = (data.content || []).filter(c => c.type === "text").map(c => c.text).join("").trim();
+  text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  const first = text.indexOf("{"), last = text.lastIndexOf("}");
+  if (first >= 0 && last > first) text = text.slice(first, last + 1);
+  return JSON.parse(text);
 }
 
 function persistEdge(a, b) {

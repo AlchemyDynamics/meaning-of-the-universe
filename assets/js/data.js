@@ -867,6 +867,448 @@ export const TOPICS = [
   },
 ];
 
+  /* ─────────────────────────  CONSCIOUSNESS  ───────────────────────── */
+  {
+    id: "consciousness",
+    name: "Consciousness",
+    cluster: "metaphysics",
+    color: "#c4b5fd",
+    position: [-8, 12, -8],
+    size: 1.1,
+    tags: ["hard problem", "qualia", "IIT", "global workspace"],
+    summary: "The fact that there is something it is like to be — and the most stubborn open problem in science.",
+    conclusion: "We can describe the neural correlates of experience in elaborate detail. We still cannot explain why there is anything to correlate with.",
+    conclusionBody: [
+      { type: "p", text: "Consciousness is the topic where intelligent people most reliably disagree. Some hold it is a deep mystery requiring new physics. Some hold it is an obvious consequence of information integration. Some hold it does not exist in any non-trivial sense — that the appearance of mystery is itself the illusion. None of these positions has decisively won, and the disagreement is older than the field." },
+      { type: "h4", text: "the structure of the debate" },
+      { type: "ul", items: [
+        "The 'easy problems' — how the brain implements attention, memory, reportability, perceptual discrimination — are tractable in principle and being solved.",
+        "The 'hard problem' (Chalmers) — why any of this physical processing is accompanied by subjective experience at all — has not budged.",
+        "Major contemporary frameworks: Global Workspace (Baars, Dehaene), Higher-Order Thought (Rosenthal), Integrated Information (Tononi), Predictive Processing (Friston, Clark), Illusionism (Frankish, Dennett).",
+      ]},
+      { type: "p", text: "The honest distillation: consciousness is the one phenomenon we are most certain of and least able to explain. That asymmetry is the field." },
+    ],
+    planetTheme: { type: "crystal", params: { hue: 0.74, accent: 0.55, facets: 6.0 } },
+    documents: [
+      {
+        id: "cons-hard-problem",
+        type: "philosophical",
+        title: "The Hard Problem at Thirty",
+        author: "philosophical review · 2024",
+        summary: "David Chalmers' 1995 distinction between easy and hard problems of consciousness reshaped the field. Three decades on, the easy problems have advanced; the hard problem has not.",
+        findings: [
+          "The 'easy problems' (binding, attention, reportability) are now domains of working neuroscience.",
+          "The 'hard problem' — why physical processes are accompanied by subjective experience — remains structurally intact.",
+          "Materialist responses (Dennett, Frankish, Graziano) reframe the question rather than answering it; non-materialist responses (panpsychism, dualism) accept the question and pay metaphysical costs.",
+        ],
+        prose: [
+          "When David Chalmers introduced the distinction between easy and hard problems of consciousness in 1995, he was framing a methodological complaint as much as a metaphysical one. The neuroscience of his era was racking up impressive results on questions like 'how does the brain bind disparate features into a unified percept?' — and conflating that with progress on the question 'why is there experience at all?' Chalmers' move was to separate these. The first kind, he called easy — not because they are simple but because we know how to make progress on them. The second kind, the hard problem, asks why any of the physical machinery is accompanied by anything inward at all.",
+          "Three decades later, the easy problems are recognizably easy in Chalmers' sense. We have good accounts of feature binding, of the conditions under which information becomes accessible to verbal report, of the neural correlates of conscious vs. unconscious processing. The hard problem has not budged. We do not have a single example of a derivation that begins with neural activity and concludes 'and therefore the system experiences X'. Even the best contemporary theories — IIT, Global Workspace, Higher-Order Thought — describe correlates without explaining why those correlates would generate experience rather than nothing.",
+          "The standard materialist response is to deny the hard problem is real — to argue that once you've explained all the easy problems, the appearance of a hard problem dissolves. Daniel Dennett's lifelong project was a sophisticated version of this. The trouble is that the dissolution looks, to those who don't accept it, like an avoidance. The non-materialist response — panpsychism, neutral monism, dualism — accepts the problem but pays metaphysical costs (consciousness becomes either ubiquitous or fundamental, neither of which fits easily with what we otherwise know)."
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────────────────  MEMORY  ───────────────────────── */
+  {
+    id: "memory",
+    name: "Memory",
+    cluster: "humanity",
+    color: "#fdba74",
+    position: [-14, -4, -2],
+    size: 1.0,
+    tags: ["episodic", "consolidation", "reconsolidation", "Eichenbaum"],
+    summary: "The brain's ongoing reconstruction of a past that never quite happened the way it remembers.",
+    conclusion: "Memory is not a storage problem; it is a reconstruction problem with sophisticated indexing and ongoing editorial revision.",
+    conclusionBody: [
+      { type: "p", text: "The folk picture of memory — recordings filed in a brain-shaped cabinet — is wrong in a specific and important way. Memory is not a retrieval of stored data. It is the active reconstruction of past states from patterns distributed across multiple brain regions, with significant editing on every access. The implications are practical (eyewitness testimony is less reliable than the law assumes) and philosophical (the unified self we feel ourselves to be is in part a memory artifact)." },
+      { type: "h4", text: "what neuroscience has settled" },
+      { type: "ul", items: [
+        "Episodic memory consolidation runs through the hippocampus then migrates to neocortex over time (Squire, McGaugh).",
+        "Each retrieval makes the memory labile and susceptible to revision — reconsolidation, demonstrated since the early 2000s.",
+        "Memory is reconstructive, not reproductive. False memories can be implanted in healthy subjects with sobering ease.",
+      ]},
+      { type: "p", text: "The honest distillation: we remember to predict, not to record. Memory's job is not accurate playback but useful inference about likely futures." },
+    ],
+    planetTheme: { type: "mandala", params: { hue: 0.08, accent: 0.55, complexity: 8.0 } },
+    documents: [
+      {
+        id: "mem-reconsolidation",
+        type: "frontier",
+        title: "Reconsolidation: Memory's Editing Window",
+        author: "neuroscience review · 2025",
+        summary: "Every time you remember something, the memory becomes briefly vulnerable to revision. This window — discovered in the early 2000s — has therapeutic implications and philosophical ones.",
+        findings: [
+          "Retrieved memories undergo a 4-6 hour window of lability before they re-stabilize.",
+          "Pharmacological agents (propranolol) administered during this window can blunt emotional intensity of trauma memories.",
+          "Implications: the past is not fixed at the level of brain-state. Every recall is also a rewrite.",
+        ],
+        prose: [
+          "Karim Nader's 2000 paper on auditory fear memory in rats was the breakthrough — though the underlying phenomenon had been hinted at decades earlier. Nader showed that when a consolidated fear memory is reactivated, it enters a brief window during which it is once again unstable and vulnerable to disruption by protein synthesis inhibitors. After the window closes, the memory is re-consolidated, possibly in modified form.",
+          "Two decades of follow-up has substantially confirmed and extended this. Human reconsolidation experiments using propranolol (a beta-blocker) demonstrate measurable reductions in the emotional intensity of trauma memories when the drug is administered during retrieval. The cognitive content of the memory remains; the autonomic punch is blunted. PTSD treatment protocols using this mechanism are in active development.",
+          "The philosophical implication is deeper than the clinical one. Reconsolidation means that the past, as encoded in your brain, is not fixed. Every time you remember something, you also revise it slightly. The narrative self you feel yourself to be is not anchored in stable recordings but in a continuously-updated chronicle that gets edited every time you consult it. This does not mean memory is unreliable in any catastrophic sense — most of the time the edits are small. But it does mean the past you 'remember' is partly authored by the present that does the remembering."
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────────────────  LANGUAGE  ───────────────────────── */
+  {
+    id: "language",
+    name: "Language",
+    cluster: "humanity",
+    color: "#f9a8d4",
+    position: [-2, -12, -2],
+    size: 1.0,
+    tags: ["Chomsky", "embodiment", "semantics", "linguistic relativity"],
+    summary: "The structured noise by which one mind shapes another — and the only proven medium of distributed cognition at scale.",
+    conclusion: "Language is the technology civilization most depends on and least understands.",
+    conclusionBody: [
+      { type: "p", text: "Linguistics is the field where the deepest questions look most settled from the outside and most contested from the inside. Generative grammar dominated the second half of the 20th century. Cognitive and embodied approaches displaced much of it. Statistical and computational linguistics have made testable predictions where theory once made hand-waves. Each tradition explains something the others cannot, and no synthesis is in sight." },
+      { type: "h4", text: "where there is honest disagreement" },
+      { type: "ul", items: [
+        "Is grammar specified by an innate biological module (Chomsky) or learned from statistical regularities in input (Tomasello, Bybee)?",
+        "Does the language you speak shape the way you think (linguistic relativity), and if so by how much?",
+        "Where does meaning come from — formal symbol manipulation, embodied simulation, distributed neural patterns?",
+      ]},
+      { type: "p", text: "The contemporary picture is that language is both more learned than the strong-Chomskyan view allowed and more structured than pure-empiricist alternatives can explain. The synthesis is in progress." },
+    ],
+    planetTheme: { type: "flow", params: { hue: 0.92, accent: 0.5, density: 1.2 } },
+    documents: [
+      {
+        id: "lang-chomsky-shift",
+        type: "historical",
+        title: "What the Chomskyan Era Got Right (and What It Missed)",
+        author: "historical-critical · 2024",
+        summary: "For fifty years, Chomsky's generative tradition was the dominant frame in linguistics. It has lost that dominance — but not without leaving permanent contributions and unfinished business.",
+        findings: [
+          "Chomsky's 1957 Syntactic Structures established that natural-language syntax is not amenable to simple statistical induction from input alone — a result that has held up.",
+          "His later commitments (universal grammar as a specific innate module, the Minimalist Program) have not aged as well empirically.",
+          "Cognitive and usage-based linguistics now account for much of what generative theory once owned, while statistical NLP has overtaken Chomskyan parsers in practice.",
+        ],
+        prose: [
+          "Noam Chomsky's 1957 monograph Syntactic Structures inaugurated modern theoretical linguistics. Its core contribution — that natural-language syntax exhibits structure that cannot be learned by simple stimulus-response or statistical models on the input alone — was correct, important, and durable. The argument from the poverty of the stimulus, while contested, remains one of the more interesting empirical questions in cognitive science.",
+          "What followed for half a century was an attempt to specify the innate component required to explain that learnability gap. Universal Grammar, Principles and Parameters, the Minimalist Program — each was a successive attempt to characterize what the language faculty must look like. The trajectory was toward ever-more-minimal innate machinery. The empirical and crosslinguistic record has not been kind to this trajectory. Languages that should not exist on UG-style accounts (Pirahã with no recursion, Riau Indonesian with extreme contextual flexibility) do exist. Children with reduced language input (homesign, late first-language learners) acquire less than the strong nativist view predicts.",
+          "Meanwhile, statistical NLP has accomplished tasks (machine translation, parsing) that generative linguistics had treated as the proper domain of formal theory, without using the theory's apparatus. The lesson is not that Chomsky was wrong — the original gap argument was right. The lesson is that the gap is smaller than mid-century estimates, and the missing machinery may be more general than language-specific."
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────────────────  DREAMS  ───────────────────────── */
+  {
+    id: "dreams",
+    name: "Dreams",
+    cluster: "metaphysics",
+    color: "#818cf8",
+    position: [-14, 2, 8],
+    size: 0.95,
+    tags: ["REM", "lucid", "phenomenology", "memory consolidation"],
+    summary: "The mind doing maintenance with its content-generation system left on.",
+    conclusion: "Dreams are real experiences of imaginary events, occurring during a brain state with measurable physical properties and one of the few experimentally accessible windows into raw cognition.",
+    conclusionBody: [
+      { type: "p", text: "The dismissal of dreams as 'random noise' has been one of the longer-running unforced errors of mainstream neuroscience. The 1977 Hobson-McCarley activation-synthesis hypothesis was useful as a corrective to overheated Freudianism but oversold the randomness. Three decades of follow-up work has confirmed that REM dreams have measurable functional roles — memory consolidation, emotional processing, predictive simulation — and that the content is structured, not random." },
+      { type: "h4", text: "what is now reasonably settled" },
+      { type: "ul", items: [
+        "REM sleep consolidates emotional and procedural memories; depriving someone of REM measurably impairs both.",
+        "Lucid dreaming is real, trainable, and accompanied by reproducible EEG signatures. Communication with lucid dreamers from inside dreams has been demonstrated.",
+        "Dream content systematically over-represents threat scenarios and social interactions — consistent with the threat-simulation and social-simulation theories of dream function.",
+      ]},
+      { type: "p", text: "Dreams are not random and not meaningless. They are not, however, the messages from a hidden self that Freudian theory imagined. They are the brain rehearsing." },
+    ],
+    planetTheme: { type: "cmb", params: { hue: 0.7, accent: 0.55, structure: 0.8 } },
+    documents: [
+      {
+        id: "dreams-lucid",
+        type: "experimental",
+        title: "Lucid Dreaming as an Experimental Method",
+        author: "experimental psychology · 2025",
+        summary: "Once dismissed as folklore, lucid dreaming is now an experimental method for studying conscious processing during sleep — with subjects who can answer questions from inside the dream.",
+        findings: [
+          "Frequent lucid dreamers can be reliably trained and identified by EEG markers of metacognition during REM.",
+          "Pre-arranged eye-movement codes allow communication out of the dream in real time.",
+          "Recent work has demonstrated full bidirectional communication: experimenters ask math questions, dreamers respond.",
+        ],
+        prose: [
+          "Lucid dreaming — the state of being aware that one is dreaming while continuing to dream — was treated as folklore through most of the 20th century. The first rigorous demonstration came from Keith Hearne's 1975 PhD work, refined by Stephen LaBerge at Stanford through the 1980s. The trick was that LaBerge's lucid dreamers could agree on a pre-arranged eye-movement sequence (left-right-left-right) when they became lucid; their EOG (electrooculogram) recordings showed the exact pattern at the moment they reported lucidity post-waking.",
+          "From there it was an iteration problem. Better training protocols (reality testing, mnemonic induction), longer lucidity durations, more reliable communication. By 2021, Konkoly et al. published two-way communication with lucid dreamers: experimenters asked simple math questions through audio cues during REM, and trained dreamers answered with eye movements. The answers were correct more often than chance allowed.",
+          "The methodological implications are large. We now have a way to interrogate conscious processing during a state that was previously a black box. Time perception in dreams (often distorted but in measurable ways), the limits of dream-state cognition (math works, but only simple problems), the conditions for and consequences of lucidity — all are now tractable empirical questions rather than philosophical speculation."
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────────────────  MATHEMATICS  ───────────────────────── */
+  {
+    id: "mathematics",
+    name: "Mathematics",
+    cluster: "systems",
+    color: "#67e8f9",
+    position: [8, 0, -14],
+    size: 1.15,
+    tags: ["Platonism", "structuralism", "Gödel", "unreasonable effectiveness"],
+    summary: "The discipline whose contents are independent of any physical fact, and yet which physical reality stubbornly conforms to.",
+    conclusion: "Mathematics is either the underlying structure of reality, or a stunningly coincidental human construction. The honest answer is we still do not know.",
+    conclusionBody: [
+      { type: "p", text: "Eugene Wigner's 1960 essay 'The Unreasonable Effectiveness of Mathematics in the Natural Sciences' framed a puzzle that has not been solved in the sixty-five years since. Why should formal systems invented by mathematicians often centuries before any physical application — projective geometry, group theory, Hilbert space — turn out to be the exact language nature speaks in?" },
+      { type: "h4", text: "what the philosophy of math has settled (sort of)" },
+      { type: "ul", items: [
+        "Platonism (mathematical objects exist independently and we discover them) remains a respectable position despite ontological costs.",
+        "Structuralism (mathematics studies abstract structures, not 'objects') accommodates working mathematicians' intuitions better.",
+        "Gödel's incompleteness theorems set hard limits on what any formal axiomatic system can prove about itself. They are not philosophical inconveniences — they are theorems.",
+      ]},
+      { type: "p", text: "The honest distillation: mathematics works as if it describes the world, even when invented in pure abstraction. Why that is, is one of the deepest open questions in philosophy. The mathematicians themselves are mostly too busy doing mathematics to worry about it." },
+    ],
+    planetTheme: { type: "grid", params: { hue: 0.5, accent: 0.65, glitch: 0.2 } },
+    documents: [
+      {
+        id: "math-godel",
+        type: "foundational",
+        title: "What Gödel's Incompleteness Actually Says",
+        author: "expository · 2024",
+        summary: "Few results are more cited and more misunderstood than Gödel's incompleteness theorems. The actual claims are precise, narrower than popular versions, and deeper than they sound.",
+        findings: [
+          "First incompleteness theorem: any consistent formal system strong enough to express elementary arithmetic contains true statements it cannot prove.",
+          "Second incompleteness theorem: such a system cannot prove its own consistency.",
+          "Common misreadings (mind exceeds mechanism, truth is relative, mathematics is incomplete in some general sense) are not supported by the theorems.",
+        ],
+        prose: [
+          "Kurt Gödel's 1931 paper 'On Formally Undecidable Propositions of Principia Mathematica and Related Systems' is one of the most consequential mathematical results of the 20th century and one of the most misquoted. The actual claims are precise. Take any formal system that (a) is consistent, (b) is rich enough to express elementary arithmetic, and (c) has a recursively enumerable set of axioms. Then there exist arithmetic statements that are true but unprovable within that system. That is the first incompleteness theorem.",
+          "The second theorem strengthens this: such a system also cannot prove its own consistency. If the system can prove 'I am consistent', it isn't.",
+          "What the theorems do NOT say: they do not say truth is relative, do not say mathematics is unknowable, do not say the human mind transcends formal systems (the Lucas-Penrose argument trades on a confusion). They do say something deep about the limits of any single formal system to be a complete and consistent account of arithmetic.",
+          "The practical implication for mathematics is small — working mathematicians proceed perfectly well without worrying about whether their preferred axiom system can prove its own consistency. The philosophical implication is large. Any system rich enough to be useful is also rich enough to harbor truths it cannot reach. This is not a defect to be fixed. It is a feature of formality."
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────────────────  MUSIC  ───────────────────────── */
+  {
+    id: "music",
+    name: "Music",
+    cluster: "humanity",
+    color: "#fcd34d",
+    position: [12, 6, -10],
+    size: 1.0,
+    tags: ["harmony", "phenomenology", "Pythagoras", "consonance"],
+    summary: "The most universally affecting human technology, structured by mathematics neither composers nor listeners typically know.",
+    conclusion: "Music's emotional power is real, cross-cultural, and only partially explained by the physical and cognitive science we've directed at it.",
+    conclusionBody: [
+      { type: "p", text: "Every documented human culture has music. Most use scales whose intervals approximate small integer frequency ratios — even when invented without contact with Pythagoras. Music's universality is well-established; its mechanism is not. Why does an unresolved dominant seventh create yearning? Why does a minor third sound sad in Western ears and not in many non-Western traditions? The answers are partly physical (consonance and the harmonic series), partly cognitive (predictive processing and the violation of expectation), and partly cultural (learned associations) — and we cannot yet say in what proportion." },
+      { type: "h4", text: "what is reasonably settled" },
+      { type: "ul", items: [
+        "Consonance perception has a physical basis in the harmonic series and roughness/beating between partials, but is also strongly culturally modulated.",
+        "Musical expectation and its violation drive much of music's emotional content — predictive processing is a productive frame here.",
+        "Music engages reward circuitry (nucleus accumbens, ventral tegmental area) in ways closer to food and sex than to language.",
+      ]},
+      { type: "p", text: "Honest distillation: we know music is universal, structured, and emotionally potent. We do not yet have a unified theory of why a particular sequence of frequencies should reliably move a mind." },
+    ],
+    planetTheme: { type: "plasma", params: { hue: 0.12, accent: 0.95, turbulence: 1.0 } },
+    documents: [
+      {
+        id: "music-pythagoras",
+        type: "foundational",
+        title: "The Mathematics of Consonance, Pythagoras to Helmholtz",
+        author: "history of science · 2024",
+        summary: "Pythagoras' 6th-century BCE discovery that consonant musical intervals correspond to simple integer ratios is one of the most enduring observations in human history.",
+        findings: [
+          "Octave (2:1), perfect fifth (3:2), perfect fourth (4:3) appear as primary consonances in essentially every documented musical tradition.",
+          "Helmholtz (1863) tied consonance perception to overlap of harmonic partials and absence of roughness from close-frequency beating.",
+          "Contemporary work shows the picture is more complex — cultural exposure substantially shapes which intervals 'sound right'.",
+        ],
+        prose: [
+          "The Pythagorean observation, recounted in late antique sources, is that strings whose lengths are in simple integer ratios produce intervals we hear as consonant. A 2:1 ratio gives the octave. 3:2 gives the perfect fifth. 4:3 gives the perfect fourth. These ratios appear in tuning systems across cultures that had no contact with each other, suggesting that something in human auditory perception is responding to them, not just to convention.",
+          "Hermann von Helmholtz's 1863 'On the Sensations of Tone' provided the first modern explanation. The harmonic series — the natural overtones produced by any pitched sound — means that notes a fifth apart share several upper partials. The brain's auditory system registers this overlap as a kind of fusion. Conversely, dissonant intervals produce close-frequency partials that beat against each other, generating a roughness sensation in the cochlea.",
+          "The Helmholtz picture is correct as far as it goes but incomplete. Cross-cultural work has shown that listeners from cultures without Western tonal music do not perceive Western consonance/dissonance the same way. Infants show some innate preferences but they are weaker and more malleable than the strong universalist view predicts. The mathematics of consonance is real; its perception is built on top of that mathematics by a brain that has heard a lot of culturally-specific music."
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────────────────  MYTHOLOGY  ───────────────────────── */
+  {
+    id: "mythology",
+    name: "Mythology",
+    cluster: "humanity",
+    color: "#fca5a5",
+    position: [-4, -8, -14],
+    size: 1.0,
+    tags: ["Campbell", "archetypes", "comparative", "Jung"],
+    summary: "The cross-culturally repeated stories that human cultures have used to make sense of birth, death, the heroic, and the cosmic.",
+    conclusion: "Myths are not failed science. They are software for managing the human condition, and the convergence across cultures is more striking than the differences.",
+    conclusionBody: [
+      { type: "p", text: "Joseph Campbell's 'monomyth' overstated the case. Not every culture's story fits the hero's-journey template, and Campbell's selection bias was real. But the corrected picture is still striking: certain narrative structures (death-and-return, the descent to the underworld, the wisdom of the rejected stranger) recur across cultures with no plausible contact, and they recur because they are doing work for the cultures that tell them." },
+      { type: "h4", text: "what serious comparative mythology now thinks" },
+      { type: "ul", items: [
+        "Flood myths, cosmic eggs, world trees, dying-and-rising gods, trickster figures — all genuinely cross-cultural patterns.",
+        "The patterns are not evidence of shared historical origin in most cases. They reflect a small set of recurrent human narrative needs.",
+        "Jung's archetypes overinterpret the data; the cross-cultural convergence is real but doesn't require a collective unconscious to explain.",
+      ]},
+      { type: "p", text: "Honest distillation: myths repeat because human conditions repeat. The shape of the stories tells us something about the shape of the species." },
+    ],
+    planetTheme: { type: "gas", params: { hue: 0.02, accent: 0.1, bands: 4.0 } },
+    documents: [
+      {
+        id: "myth-campbell",
+        type: "comparative",
+        title: "Campbell's Monomyth: A Careful Assessment",
+        author: "comparative mythology · 2025",
+        summary: "Joseph Campbell's 'Hero with a Thousand Faces' (1949) proposed a universal narrative pattern beneath the world's mythologies. The thesis has been hugely influential and substantially overstated.",
+        findings: [
+          "The hero's-journey template fits some traditions (Greek, certain Sumerian, much of Western literature post-Campbell) well; others (Chinese, Japanese, much of Africa) much less well.",
+          "Campbell's evidentiary methods involved selecting episodes that fit and ignoring those that did not.",
+          "The corrected picture is that several recurring patterns exist (separation/initiation/return is one) but no single monomyth covers all the data.",
+        ],
+        prose: [
+          "Joseph Campbell's 'The Hero with a Thousand Faces' (1949) argued that the world's myths, across cultures and continents, share a single underlying narrative pattern: separation from the ordinary world, initiation through trials, and return with transformative gifts. The book became a touchstone for two generations of thinking about narrative — its influence on George Lucas's Star Wars is direct and acknowledged, and its descendants populate contemporary screenwriting manuals.",
+          "Comparative mythologists since Campbell have been more cautious. The pattern fits some traditions well — Mesopotamian Gilgamesh, the Odyssey, certain Christological readings of the Gospels, Tolkien's Frodo. It fits others poorly. The Chinese epic Journey to the West has heroic-journey elements but the narrative architecture is fundamentally different. Many African oral traditions are not journeys at all but cyclical or geographical. Aboriginal Australian Dreamtime narratives are about the shape of land more than the trajectory of persons.",
+          "The mature contemporary view is that Campbell identified a real recurring pattern but oversold its universality. The cross-cultural convergence is real, it is just not a single monolith. Several distinct narrative-attractors — death-and-rebirth, the trickster cycle, foundation myths, theogonies — recur across cultures without requiring a single underlying template. Why these and not others is the interesting open question."
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────────────────  BIOLOGY  ───────────────────────── */
+  {
+    id: "biology",
+    name: "Biology",
+    cluster: "physical",
+    color: "#86efac",
+    position: [16, 4, 2],
+    size: 1.15,
+    tags: ["evolution", "emergence", "origin of life", "cell biology"],
+    summary: "The most consequential physical phenomenon we know of — chemistry that started keeping records.",
+    conclusion: "Biology is what physics looks like once it begins copying itself with errors and selecting on the results.",
+    conclusionBody: [
+      { type: "p", text: "The unifying insight of modern biology — that all living things on Earth descend from a common ancestor via descent with modification — is one of science's most empirically supported theories. The molecular evidence (DNA's near-universal code, conserved core metabolic pathways, shared developmental machinery) is overwhelming. The remaining controversies are downstream: how did the first replicator arise, how exactly does selection shape complex traits, where are the limits of evolutionary explanation." },
+      { type: "h4", text: "what is settled" },
+      { type: "ul", items: [
+        "Common descent of all known life via DNA-based heredity. The tree (or web) of life is real.",
+        "Natural selection is the primary mechanism of adaptive change. Drift, neutral evolution, and horizontal gene transfer also matter.",
+        "The basic machinery of cells — protein synthesis from DNA via RNA, ATP-based energy metabolism, membrane-bound compartments — is shared across all domains.",
+      ]},
+      { type: "h4", text: "what is genuinely open" },
+      { type: "ul", items: [
+        "The origin of life — how the first self-replicating molecular system arose from prebiotic chemistry — is unsolved.",
+        "Whether life elsewhere uses the same fundamental architecture (DNA, ATP, ribosomal translation) or different.",
+        "The limits of evolutionary explanation — what level of complex behavior is or isn't reducible to selection-acting-on-variation.",
+      ]},
+      { type: "p", text: "Honest distillation: biology is the best-confirmed grand theory we have. The pieces it can't yet explain are not refutations; they are the frontier." },
+    ],
+    planetTheme: { type: "flow", params: { hue: 0.35, accent: 0.55, density: 1.3 } },
+    documents: [
+      {
+        id: "bio-origin",
+        type: "frontier",
+        title: "The Origin of Life: State of Play",
+        author: "frontier review · 2025",
+        summary: "Despite seventy years of effort, we do not know how non-living chemistry became living chemistry. The leading proposals are now testable and the experimental front is active.",
+        findings: [
+          "Miller-Urey (1953) showed amino acids form readily from prebiotic conditions; this part is no longer mysterious.",
+          "The hard problem is the transition from prebiotic chemistry to a self-replicating system with heritable variation.",
+          "Leading candidates: RNA world (Gilbert), metabolism-first (Wächtershäuser, Russell), lipid-world / autocatalytic sets (Kauffman).",
+        ],
+        prose: [
+          "Stanley Miller's 1953 experiment with a simulated early-Earth atmosphere (reducing gases, electrical discharges) showed that the basic chemical building blocks of biology — amino acids, nucleobases, simple sugars — form readily from non-biological starting materials. This was the easy part. The hard part is how those building blocks organized themselves into a self-replicating system with heritable variation — the threshold for being something Darwinian selection can act on.",
+          "The leading family of proposals is the RNA world, originally suggested in passing by Crick and Orgel and developed seriously by Walter Gilbert in 1986. The idea is that RNA — which can both encode information and catalyze reactions — preceded both DNA and proteins as the substrate of early life. RNA's dual capability is the key attractive feature; the experimental evidence for self-replicating ribozymes has accumulated steadily.",
+          "Alternative proposals — metabolism-first networks at deep-sea hydrothermal vents (Mike Russell), autocatalytic chemical sets (Stuart Kauffman), lipid-world hypotheses — are not dead. The current state is that we have multiple plausible mechanisms, none of which has been demonstrated end-to-end from prebiotic chemistry to a functioning protocell. The experimental program of the next two decades will likely either close one of these gaps or reveal a mechanism nobody has yet proposed."
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────────────────  TIME  ───────────────────────── */
+  {
+    id: "time",
+    name: "Time",
+    cluster: "physical",
+    color: "#cbd5e1",
+    position: [4, 12, 10],
+    size: 1.05,
+    tags: ["relativity", "arrow", "block universe", "phenomenology"],
+    summary: "The dimension we experience as flow but physics describes as a coordinate — and the gap between those descriptions is one of the open problems.",
+    conclusion: "Physics treats time as a coordinate without preferred direction. Experience treats it as a flowing river with one direction. Both are right; we don't fully understand how.",
+    conclusionBody: [
+      { type: "p", text: "Time is where physics and phenomenology most visibly fail to agree. Einstein's general relativity treats time as a coordinate in a four-dimensional spacetime manifold, no different in principle from spatial coordinates. The fundamental equations are time-reversal symmetric. Yet we experience time as flowing, asymmetric, with a sharp difference between past (fixed) and future (open)." },
+      { type: "h4", text: "where the physics is settled" },
+      { type: "ul", items: [
+        "Special and general relativity: simultaneity is observer-dependent, time dilates in motion and gravity, there is no universal 'now'.",
+        "Thermodynamic arrow: entropy increases. This is the only fundamental-law source of time-asymmetry we have.",
+        "The block universe interpretation (past, present, future all equally real) is taken seriously by working physicists but not without dissent.",
+      ]},
+      { type: "h4", text: "where the philosophy is open" },
+      { type: "ul", items: [
+        "What is the relationship between physical time and experienced time?",
+        "Why does the universe have such a low-entropy initial state — the precondition for the thermodynamic arrow?",
+        "Are presentism (only the now is real) or eternalism (all moments equally real) defensible?",
+      ]},
+    ],
+    planetTheme: { type: "mandala", params: { hue: 0.62, accent: 0.5, complexity: 12.0 } },
+    documents: [
+      {
+        id: "time-arrow",
+        type: "theoretical",
+        title: "The Arrow of Time and the Past Hypothesis",
+        author: "philosophical-physical · 2024",
+        summary: "Why does time have a direction? The only fundamental answer involves entropy and an initial low-entropy state — and that initial state is itself unexplained.",
+        findings: [
+          "The fundamental laws of physics (electromagnetism, gravity, QFT) are time-reversal symmetric at the microphysical level.",
+          "The macroscopic arrow of time — distinguishing past from future — derives from entropy increase per the second law of thermodynamics.",
+          "Entropy increases only because the universe started in an exceptionally low-entropy state. Why it did is the 'past hypothesis' and is not derived; it is posited.",
+        ],
+        prose: [
+          "If you watch a film of two billiard balls colliding played backwards, the physics looks fine — the trajectories still respect conservation of momentum and energy. The fundamental laws don't tell you which direction time runs. But if you watch a film of a glass shattering played backwards — fragments rising into a perfect vessel — you recognize immediately that this is wrong. Why?",
+          "The answer is the second law of thermodynamics: entropy, the disorder of a system, increases over time. The reverse-glass video shows entropy decreasing — which is allowed by the microphysics but overwhelmingly unlikely given the number of microstates involved. The macroscopic arrow of time is statistical, not fundamental. It emerges from the staggering asymmetry between the number of disordered configurations (high entropy) and ordered ones (low entropy).",
+          "The deep puzzle is that entropy only increases from now into the future because it was lower in the past. Run time backwards far enough and you reach a state of extraordinarily low entropy — the universe near the Big Bang was in a configuration much more ordered than its number of microstates would suggest. This is the 'past hypothesis' (Albert, Loewer): the assumption that the early universe had very low entropy is needed to ground the arrow of time, but the assumption itself is not derived from any deeper physics. We don't know why the universe started this way."
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────────────────  IMAGINATION  ───────────────────────── */
+  {
+    id: "imagination",
+    name: "Imagination",
+    cluster: "metaphysics",
+    color: "#93c5fd",
+    position: [-16, 6, 0],
+    size: 1.0,
+    tags: ["counterfactual", "mental simulation", "creativity", "aphantasia"],
+    summary: "The brain's general-purpose simulator — without which neither planning nor empathy nor art would be possible.",
+    conclusion: "Imagination is not a luxury cognitive function but the substrate of nearly every form of higher cognition we value.",
+    conclusionBody: [
+      { type: "p", text: "Until the 21st century, imagination was treated as a peripheral or even decorative faculty. The reframe — driven by predictive-processing accounts of cognition and by clinical findings on aphantasia (the inability to form mental images) — is that imagination is closer to the core of how the brain works. Planning, episodic memory, theory of mind, counterfactual reasoning, scientific hypothesizing, fiction-reading, empathy — all involve running internal simulations of situations not currently present." },
+      { type: "h4", text: "what recent work has established" },
+      { type: "ul", items: [
+        "Imagination and perception share substantial neural substrate; imagining is closer to a perceptual replay than to a separate faculty.",
+        "Aphantasia (lifetime inability to form voluntary mental imagery) affects roughly 1-4% of the population and is associated with specific differences in memory and counterfactual reasoning.",
+        "Predictive processing frameworks (Friston, Clark) treat ordinary perception itself as a constrained kind of imagination — the brain's best simulation of what is producing its sensory input.",
+      ]},
+      { type: "p", text: "Honest distillation: imagination is what minds do. The conscious deliberate kind is just the visible tip of a much more pervasive simulation engine." },
+    ],
+    planetTheme: { type: "plasma", params: { hue: 0.6, accent: 0.85, turbulence: 1.5 } },
+    documents: [
+      {
+        id: "imag-aphantasia",
+        type: "clinical",
+        title: "Aphantasia and the Variety of Inner Experience",
+        author: "clinical-cognitive review · 2024",
+        summary: "1-4% of people lack the ability to voluntarily form mental images. The discovery of this condition has revealed how wide the variation in inner experience actually is.",
+        findings: [
+          "Aphantasia is not blindness or amnesia — affected individuals describe and recognize things normally but cannot 'see' them with the mind's eye.",
+          "First systematically described by Adam Zeman (Exeter) in 2015, the condition turns out to be substantially heritable and stable across the lifetime.",
+          "Affected individuals show specific cognitive patterns — often weaker episodic memory, reduced counterfactual imagination, sometimes compensating strengths in abstract reasoning.",
+        ],
+        prose: [
+          "Until 2015, the prevailing assumption was that everyone's inner experience worked roughly similarly. Ask a person to picture an apple, and they would form a more-or-less vivid mental image. Adam Zeman's case study of patient MX — a 65-year-old man who had lost the ability to form mental images after a cardiac procedure — was the trigger that revealed how much variation actually exists.",
+          "MX could describe an apple, recognize one, identify color and shape from memory. He simply could not 'see' it. When asked, he reported nothing where the mental image was supposed to be. Follow-up studies revealed that roughly 1-4% of the general population reports the same lifetime absence of voluntary mental imagery — a condition Zeman named aphantasia.",
+          "The discovery has had several consequences. Methodologically, it revealed that introspective reports about mental imagery had been quietly assuming a universality that was not there. Empirically, it identified a population that could serve as a natural test case for theories of imagination, memory, and dreaming. Aphantasic individuals on average have weaker episodic memory, less vivid dreams, less spontaneous counterfactual thought. They also often report compensating strengths — abstract verbal-conceptual reasoning is intact and sometimes enhanced. Imagination, it turns out, is not optional for everyone, and the variation reveals what it is doing in the typical case."
+        ],
+      },
+    ],
+  },
+
 /* ============================================================
    Sub-topics — orbiting moons under a parent topic.
    Smaller scope but same shape: each has its own conclusion
@@ -1157,6 +1599,34 @@ export const EDGES = [
   ["economics", "world-religions"],
   ["esoterica", "cosmology"],
   ["astrophysics", "cosmology"],
+  // new constellations among the 10 added
+  ["consciousness", "simulation-theory"],
+  ["consciousness", "memory"],
+  ["consciousness", "dreams"],
+  ["consciousness", "imagination"],
+  ["memory", "language"],
+  ["memory", "dreams"],
+  ["language", "computation"],
+  ["language", "music"],
+  ["dreams", "imagination"],
+  ["dreams", "esoterica"],
+  ["mathematics", "computation"],
+  ["mathematics", "music"],
+  ["mathematics", "cosmology"],
+  ["mathematics", "astrophysics"],
+  ["music", "mathematics"],
+  ["mythology", "world-religions"],
+  ["mythology", "esoterica"],
+  ["mythology", "language"],
+  ["biology", "astrophysics"],
+  ["biology", "computation"],
+  ["biology", "consciousness"],
+  ["time", "cosmology"],
+  ["time", "consciousness"],
+  ["time", "memory"],
+  ["imagination", "esoterica"],
+  ["imagination", "music"],
+  ["imagination", "mythology"],
 ];
 
 /* Cluster colors (legend) */
