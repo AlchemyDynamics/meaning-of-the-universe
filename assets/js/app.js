@@ -36,6 +36,7 @@ const state = {
   topicMeshes: new Map(),   // id -> mesh
   moonMeshes: [],           // [{ id, group, mesh, orbit, hoverHalo }]
   generatingNow: false,
+  genToken: 0,
   edgeLines: null,
   starfield: null,
   planetMesh: null,
@@ -94,6 +95,7 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 function scheduleBootDismiss() {
+  const bootStarted = performance.now();
   // Open the third-eye mask at 5s; fade boot at 7.5s; remove at 9s.
   setTimeout(() => {
     const b = document.getElementById("boot");
@@ -107,6 +109,20 @@ function scheduleBootDismiss() {
     const b = document.getElementById("boot");
     if (b) b.remove();
   }, 9000);
+
+  // Skip-on-gesture: any click or key after a 600ms grace period dismisses early.
+  const skipBoot = () => {
+    if (performance.now() - bootStarted < 600) return;     // honor the first moment
+    const b = document.getElementById("boot");
+    if (!b) return;
+    b.classList.add("opening");
+    b.classList.add("fade");
+    setTimeout(() => { const x = document.getElementById("boot"); if (x) x.remove(); }, 700);
+    window.removeEventListener("keydown", skipBoot);
+    window.removeEventListener("pointerdown", skipBoot);
+  };
+  window.addEventListener("pointerdown", skipBoot);
+  window.addEventListener("keydown", skipBoot);
   // ascending chakra tones, scheduled at the same instants the chakras flare
   setTimeout(() => playBootChakraTones(), 80);
   // try to resume audio context on first user gesture (in case autoplay was blocked)
@@ -597,11 +613,13 @@ function buildTopicNodes() {
   setBootStatus("placing the topic-stars…");
   const group = new THREE.Group();
   state.starLabels = new Map();
+  state.hitTargets = [];
 
   for (const topic of TOPICS) {
     const node = makeTopicNode(topic);
     group.add(node);
     state.topicMeshes.set(topic.id, node);
+    state.hitTargets.push(node.userData.hit);
     addStarLabel(topic);
   }
 
@@ -1312,10 +1330,12 @@ function renderCard(entry) {
     seeAlsoWrap.hidden = true;
   }
 
-  // bind the card's listen button (it lives in static HTML; bind once per re-render)
+  // Track the currently-rendered entry in a ref so the static listen button
+  // always reads the current card, not the first one bound.
+  state._cardEntryRef = entry;
   const ttsBtn = root.querySelector("[data-tts-card]");
   if (ttsBtn && !ttsBtn._bound) {
-    ttsBtn.addEventListener("click", () => handleTTSButtonClick(ttsBtn, () => cardReadAloud(entry)));
+    ttsBtn.addEventListener("click", () => handleTTSButtonClick(ttsBtn, () => cardReadAloud(state._cardEntryRef)));
     ttsBtn._bound = true;
   }
   const stopBtn = root.querySelector("[data-tts-stop]");
@@ -1542,10 +1562,8 @@ function doHoverPickMoons() {
 
 function doHoverPick() {
   state.raycaster.setFromCamera(state.pointer, state.camera);
-  // Use the wider invisible hit-sphere so the whole corona is clickable, not just the tiny core.
-  const targets = [];
-  for (const [, node] of state.topicMeshes) targets.push(node.userData.hit || node.userData.core);
-  const hits = state.raycaster.intersectObjects(targets, false);
+  // Use the cached wider invisible hit-spheres (no per-frame allocation).
+  const hits = state.raycaster.intersectObjects(state.hitTargets || [], false);
   const tooltip = document.getElementById("tooltip");
 
   if (hits.length > 0) {
@@ -1555,7 +1573,7 @@ function doHoverPick() {
     if (id !== state.hovered) {
       state.hovered = id;
       const topic = topicById(id);
-      tooltip.innerHTML = `${topic.name}<span class="tt-sub">${topic.cluster} · ${topic.documents.length} documents</span>`;
+      tooltip.innerHTML = `${escapeHtml(topic.name)}<span class="tt-sub">${escapeHtml(topic.cluster)} · ${topic.documents.length} documents</span><span class="tt-hint">shift-click to fuse</span>`;
       tooltip.hidden = false;
       document.body.style.cursor = "pointer";
       // grow halo
@@ -1687,7 +1705,41 @@ function openConclusion(entry) {
     }
   }
   appendSourcesIfAny(body, entry.sources, "broader reading");
+  // Append "see also" pills at the bottom — fills the dead-end after reading the conclusion.
+  appendSeeAlsoPills(body, entry);
   document.getElementById("modal-conclusion").hidden = false;
+}
+
+function appendSeeAlsoPills(parent, entry) {
+  const card = cardFor(entry);
+  const seeAlso = (card?.seeAlso || []).filter(s => s && s.id);
+  if (seeAlso.length === 0) return;
+  const wrap = document.createElement("div");
+  wrap.className = "sources-section";
+  const h = document.createElement("h4");
+  h.textContent = "where to go next";
+  wrap.appendChild(h);
+  const row = document.createElement("div");
+  row.className = "card-seealso";
+  for (const s of seeAlso) {
+    const resolved = resolveById(s.id);
+    if (!resolved) continue;
+    const targetColor = resolved.entry.color || "#a78bfa";
+    const pill = document.createElement("button");
+    pill.type = "button";
+    pill.className = "card-seealso-pill";
+    pill.innerHTML = `<span class="pill-dot" style="background:${targetColor};color:${targetColor}"></span><span>${escapeHtml(resolved.entry.name)}</span>${s.why ? `<span class="pill-why">— ${escapeHtml(s.why)}</span>` : ""}`;
+    pill.addEventListener("click", () => {
+      closeAllModals();
+      if (resolved.kind === "topic") navigateToHit({ id: resolved.entry.id, kind: "topic", name: resolved.entry.name });
+      else navigateToHit({ id: resolved.entry.id, kind: "moon", name: resolved.entry.name, parentId: resolved.parent.id });
+    });
+    row.appendChild(pill);
+  }
+  if (row.childElementCount > 0) {
+    wrap.appendChild(row);
+    parent.appendChild(wrap);
+  }
 }
 
 /* Append a "Sources" section if the entry/document has any. */
@@ -1721,30 +1773,61 @@ function openDocuments(entry) {
   document.getElementById("docsTitle").textContent = entry.name;
   const list = document.getElementById("docList");
   list.innerHTML = "";
-  (entry.documents || []).forEach((doc, idx) => {
+  const docs = entry.documents || [];
+  state._currentDocs = docs;
+  docs.forEach((doc, idx) => {
     const li = document.createElement("li");
     li.innerHTML = `
-      <span class="doc-type">${doc.type}</span>
-      <span class="doc-title">${doc.title}</span>
-      <span class="doc-author">${doc.author}</span>
+      <span class="doc-type">${escapeHtml(doc.type)}</span>
+      <span class="doc-title">${escapeHtml(doc.title)}</span>
+      <span class="doc-author">${escapeHtml(doc.author)}</span>
     `;
     li.addEventListener("click", () => {
       [...list.children].forEach(c => c.classList.remove("active"));
       li.classList.add("active");
-      renderDocument(doc);
+      renderDocument(doc, docs);
     });
     list.appendChild(li);
     if (idx === 0) {
       li.classList.add("active");
-      renderDocument(doc);
+      renderDocument(doc, docs);
     }
   });
   document.getElementById("modal-documents").hidden = false;
 }
 
-function renderDocument(doc) {
+function switchDoc(docId) {
+  const docs = state._currentDocs || [];
+  const doc = docs.find(d => d.id === docId);
+  if (!doc) return;
+  // update active class in the list, then render
+  const list = document.getElementById("docList");
+  if (list) {
+    [...list.children].forEach((li, i) => li.classList.toggle("active", docs[i]?.id === doc.id));
+  }
+  renderDocument(doc, docs);
+}
+
+function appendDocNav(parent, doc, docs) {
+  if (!docs || docs.length < 2) return;
+  const idx = docs.findIndex(d => d.id === doc.id);
+  const prev = docs[idx - 1] || null;
+  const next = docs[idx + 1] || null;
+  if (!prev && !next) return;
+  const nav = document.createElement("footer");
+  nav.className = "doc-nav";
+  nav.innerHTML = `
+    ${prev ? `<button class="doc-nav-btn doc-nav-prev" data-doc-prev="${escapeHtml(prev.id)}"><span class="doc-nav-arrow">←</span> <span class="doc-nav-label"><span class="doc-nav-eyebrow">previous</span> ${escapeHtml(prev.title)}</span></button>` : `<span></span>`}
+    ${next ? `<button class="doc-nav-btn doc-nav-next" data-doc-next="${escapeHtml(next.id)}"><span class="doc-nav-label"><span class="doc-nav-eyebrow">next</span> ${escapeHtml(next.title)}</span> <span class="doc-nav-arrow">→</span></button>` : ""}
+  `;
+  parent.appendChild(nav);
+}
+
+function renderDocument(doc, allDocs) {
   // any previous reading should stop when switching docs
   stopSpeech();
+  state._currentDocs = allDocs || state._currentDocs;
+  state._currentDocId = doc.id;
   const reader = document.getElementById("docReader");
   reader.innerHTML = `
     <div class="doc-head-row">
@@ -1770,8 +1853,15 @@ function renderDocument(doc) {
   `;
   // append sources section if the document has any
   appendSourcesIfAny(reader, doc.sources, "sources");
+  // prev / next navigation through the doc list
+  appendDocNav(reader, doc, state._currentDocs || []);
   reader.scrollTop = 0;
-  // wire the dynamically-rendered control set
+  // wire the dynamically-rendered control set + doc-nav prev/next
+  const navPrev = reader.querySelector("[data-doc-prev]");
+  if (navPrev) navPrev.addEventListener("click", () => switchDoc(navPrev.dataset.docPrev));
+  const navNext = reader.querySelector("[data-doc-next]");
+  if (navNext) navNext.addEventListener("click", () => switchDoc(navNext.dataset.docNext));
+
   const btn = reader.querySelector("[data-tts-doc]");
   if (btn) {
     btn.addEventListener("click", () => handleTTSButtonClick(btn, () => entryToReadable(doc, "document")));
@@ -2367,15 +2457,23 @@ async function startSpeechElevenLabs(text, btn) {
     restoreBtnLabel(btn);
     setBtnLabel(btn, "pause");
     playElevenPart(0);
-    // prefetch the rest serially (avoid hammering free-tier rate limits)
+    // prefetch the rest serially (avoid hammering free-tier rate limits).
+    // Carefully revoke any URL that arrives AFTER the user stopped — otherwise
+    // those blobs leak forever (stopSpeech ran before we set TTS.audioParts[i]).
     for (let i = 1; i < chunks.length; i++) {
       if (!TTS.playing) break;
+      let url;
       try {
-        TTS.audioParts[i] = await elFetchAudio(chunks[i], voiceId, TTS.pendingAbort.signal);
+        url = await elFetchAudio(chunks[i], voiceId, TTS.pendingAbort.signal);
       } catch (e) {
-        // abort or error — bail
         break;
       }
+      if (!TTS.playing) {
+        // stopped during the await — release the blob and bail
+        try { URL.revokeObjectURL(url); } catch (_) {}
+        break;
+      }
+      TTS.audioParts[i] = url;
     }
     // refresh quota in background
     refreshElQuota();
@@ -3230,6 +3328,20 @@ function attachUI() {
     else returnToGalaxy();
   });
   document.getElementById("btn-about").addEventListener("click", () => document.getElementById("modal-about").hidden = false);
+  document.getElementById("btn-keys").addEventListener("click", () => document.getElementById("modal-keys").hidden = false);
+  document.getElementById("btn-wander").addEventListener("click", () => {
+    // wander — warp to a random topic for serendipitous discovery
+    const pool = TOPICS.filter(t => t && !t.parentId);
+    if (pool.length === 0) return;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (state.mode === "planet" || state.mode === "moon") {
+      returnToGalaxy();
+      setTimeout(() => enterPlanet(pick.id), 700);
+    } else {
+      enterPlanet(pick.id);
+    }
+    toast(`wandering to ${pick.name}`);
+  });
   document.getElementById("btn-reset-view").addEventListener("click", () => {
     state.cameraTargetPos = new THREE.Vector3(0, 6, 36);
     state.cameraTargetLook = new THREE.Vector3(0, 0, 0);
@@ -3800,10 +3912,12 @@ function navigateToHit(hit) {
 }
 
 async function generateAndAddEntity(query) {
+  const token = ++state.genToken;   // drop stale results from rapid double-searches
   showGenerationOverlay(`searching for "${query}"`, "Consulting The Librarian");
   state.generatingNow = true;
   try {
     const result = await callClaudeForGeneration(query);
+    if (token !== state.genToken) { hideGenerationOverlay(); return; }
     if (!state.generatingNow) return;
 
     if (result.parent) {
@@ -4105,6 +4219,7 @@ function addTopicNode(topic) {
   const node = makeTopicNode(topic);
   state.topicGroup.add(node);
   state.topicMeshes.set(topic.id, node);
+  if (state.hitTargets) state.hitTargets.push(node.userData.hit);
   addStarLabel(topic);
 
   // bloom-in animation

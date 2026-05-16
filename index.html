@@ -126,9 +126,11 @@
       <div id="searchHint" class="search-hint">try “Buddhism”, “black holes”, or a question we haven't catalogued yet</div>
     </div>
     <div class="hud-top-right">
+      <button class="chip" id="btn-wander" title="Warp to a random topic">⟲ wander</button>
       <button class="chip" id="btn-dictionary" title="Hover any word to define it">dictionary</button>
       <button class="chip chip-accent" id="btn-collide" title="Collide two ideas to spawn an insight">⨯ collide</button>
       <button class="chip" id="btn-settings" title="Settings">settings</button>
+      <button class="chip" id="btn-keys" title="Keyboard shortcuts">?keys</button>
       <button class="chip" id="btn-about" title="About">about</button>
       <button class="chip" id="btn-toggle-edges" title="Toggle constellations">edges</button>
       <button class="chip" id="btn-reset-view" title="Reset view">recenter</button>
@@ -298,6 +300,32 @@
         <p class="conn-intro">Adjacent territories of inquiry. Click to traverse.</p>
         <div class="conn-grid" id="connGrid"></div>
         <div class="conn-adder" id="connAdder"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard shortcuts modal -->
+  <div id="modal-keys" class="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-eyebrow">shortcuts</div>
+        <h3>navigating the library</h3>
+        <button class="modal-close" data-close-modal>✕</button>
+      </div>
+      <div class="modal-body">
+        <ul class="keys-list">
+          <li><kbd>click</kbd> a star — enter its planet</li>
+          <li><kbd>drag</kbd> in the void — orbit the galaxy</li>
+          <li><kbd>scroll</kbd> — zoom in / out</li>
+          <li><kbd>shift</kbd>+<kbd>click</kbd> two or more stars — select to fuse</li>
+          <li><kbd>enter</kbd> with selection — fire the fusion</li>
+          <li><kbd>esc</kbd> — close any modal · clear selection</li>
+          <li><kbd>?</kbd> — open The Librarian</li>
+          <li><kbd>click</kbd> any tag — explore it · or generate if new</li>
+          <li><kbd>click</kbd> a "see also" pill — warp to that adjacent topic</li>
+          <li><kbd>click</kbd> on the boot animation — skip it</li>
+        </ul>
+        <p class="dim" style="margin-top:18px;">Try the <strong>⟲ wander</strong> chip for serendipity, or <strong>dictionary</strong> to hover-define any word.</p>
       </div>
     </div>
   </div>
