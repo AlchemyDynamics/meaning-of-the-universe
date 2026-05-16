@@ -235,6 +235,38 @@ em { color: var(--ink-0); font-style: italic; }
 .counter span { color: var(--accent); }
 
 /* ============================================================
+   Star labels — projected over the canvas in galaxy mode
+   ============================================================ */
+.star-labels {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 8;
+  overflow: hidden;
+}
+.star-label {
+  position: absolute;
+  left: 0; top: 0;
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px 4px 8px;
+  border-radius: 999px;
+  background: rgba(8, 8, 22, 0.55);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(167, 139, 250, 0.18);
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.1em; text-transform: lowercase;
+  color: var(--ink-1);
+  white-space: nowrap;
+  transform-origin: 0 0;
+  transition: opacity 0.25s ease;
+  user-select: none;
+}
+.star-label .star-label-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+.star-label.hidden { display: none; }
+
+/* ============================================================
    Tooltip
    ============================================================ */
 .tooltip {
@@ -752,6 +784,67 @@ em { color: var(--ink-0); font-style: italic; }
 .setting-btn:hover { background: rgba(167,139,250,0.32); }
 .setting-btn.ghost { background: transparent; }
 .setting-btn.ghost:hover { background: rgba(167,139,250,0.1); }
+
+/* ============================================================
+   "Did you know" — incidental knowledge card
+   ============================================================ */
+.dyk-card {
+  position: fixed;
+  left: 32px; bottom: 28px;
+  z-index: 24;
+  width: min(360px, 38vw);
+  background: linear-gradient(160deg, rgba(15,15,40,0.85), rgba(8,8,22,0.95));
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.55), 0 0 40px rgba(167,139,250,0.18);
+  animation: dykIn 0.55s cubic-bezier(0.2,0.7,0.2,1);
+}
+@keyframes dykIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dyk-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px 6px;
+}
+.dyk-eyebrow {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--accent);
+}
+.dyk-topic {
+  flex: 1;
+  font-family: var(--serif); font-size: 14px; color: var(--ink-1);
+  font-style: italic;
+}
+.dyk-close {
+  color: var(--ink-3); font-size: 14px; padding: 2px 6px; border-radius: 6px;
+}
+.dyk-close:hover { color: var(--ink-0); background: rgba(167,139,250,0.1); }
+
+.dyk-body {
+  font-family: var(--serif); font-size: 15px; line-height: 1.5;
+  color: var(--ink-0); padding: 4px 18px 14px;
+}
+.dyk-foot {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 0 12px 12px;
+}
+.dyk-btn {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: lowercase;
+  color: var(--ink-1);
+  padding: 6px 12px; border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--line);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.dyk-btn:hover { background: rgba(167,139,250,0.08); color: var(--ink-0); border-color: var(--line-2); }
+.dyk-btn-primary { background: rgba(167,139,250,0.18); color: var(--ink-0); border-color: var(--line-2); }
+.dyk-btn-primary:hover { background: rgba(167,139,250,0.32); }
+
+@media (max-width: 720px) {
+  .dyk-card { left: 12px; right: 12px; width: auto; bottom: 80px; }
+}
 
 /* ============================================================
    Generation overlay

@@ -156,9 +156,9 @@ function initScene() {
   state.composer.addPass(new RenderPass(state.scene, state.camera));
   const bloom = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.7,  // strength
-    0.6,  // radius
-    0.15  // threshold
+    0.32,  // strength — softer halo, less wash-out
+    0.55,  // radius
+    0.28   // threshold — only the bright cores bloom
   );
   state.composer.addPass(bloom);
 
@@ -372,15 +372,33 @@ function makeTopicNode(topic) {
 function buildTopicNodes() {
   setBootStatus("placing the topic-stars…");
   const group = new THREE.Group();
+  state.starLabels = new Map();
 
   for (const topic of TOPICS) {
     const node = makeTopicNode(topic);
     group.add(node);
     state.topicMeshes.set(topic.id, node);
+    addStarLabel(topic);
   }
 
   state.scene.add(group);
   state.topicGroup = group;
+}
+
+function addStarLabel(topic) {
+  const host = document.getElementById("starLabels");
+  if (!host) return;
+  const el = document.createElement("div");
+  el.className = "star-label";
+  el.dataset.topicId = topic.id;
+  el.innerHTML = `<span class="star-label-dot" style="background:${topic.color};color:${topic.color}"></span>${escapeHtml(topic.name)}`;
+  host.appendChild(el);
+  state.starLabels.set(topic.id, el);
+}
+
+function removeStarLabel(topicId) {
+  const el = state.starLabels?.get(topicId);
+  if (el) { el.remove(); state.starLabels.delete(topicId); }
 }
 
 function buildNebulae() {
@@ -1019,10 +1037,38 @@ function startLoop() {
       }
     }
 
+    // project star labels to screen each frame (cheap with ~20 labels)
+    if (state.starLabels && state.starLabels.size > 0) updateStarLabels();
+
     state.controls.update();
     state.composer.render();
   }
   frame();
+}
+
+const _labelV = new THREE.Vector3();
+function updateStarLabels() {
+  const inGalaxy = state.mode === "galaxy" || state.mode === "transit";
+  const w = window.innerWidth, h = window.innerHeight;
+  for (const [id, label] of state.starLabels) {
+    if (!inGalaxy) { label.classList.add("hidden"); continue; }
+    const node = state.topicMeshes.get(id);
+    if (!node) { label.classList.add("hidden"); continue; }
+    // world position of the node accounting for any parent group rotation
+    node.getWorldPosition(_labelV);
+    const distance = state.camera.position.distanceTo(_labelV);
+    _labelV.project(state.camera);
+    const behind = _labelV.z > 1;
+    if (behind) { label.classList.add("hidden"); continue; }
+    label.classList.remove("hidden");
+    const x = (_labelV.x * 0.5 + 0.5) * w;
+    const y = (-_labelV.y * 0.5 + 0.5) * h;
+    // offset above the star a bit (28px world-screen offset)
+    label.style.transform = `translate(calc(-50% + ${x}px), calc(-30px + ${y}px))`;
+    // fade with distance — close stars get full label, distant ones fade
+    const opacity = Math.max(0.15, Math.min(0.95, 80 / distance));
+    label.style.opacity = opacity;
+  }
 }
 
 /* ============================================================
@@ -2277,6 +2323,113 @@ function setupSettingsPanel() {
   });
 }
 
+/* ============================================================
+   "Did you know" — incidental knowledge surfacing
+   ------------------------------------------------------------
+   Every ~45s of idle galaxy time, a card surfaces a short fact
+   drawn from a random topic's findings or conclusion-list items.
+   Click "another" to cycle, "→ visit" to warp, "✕" to dismiss.
+   ============================================================ */
+
+const DYK = {
+  shownThisSession: new Set(),
+  current: null,         // { topic, fact }
+  nextScheduledAt: 0,
+  visible: false,
+  autoHideTimer: null,
+};
+
+function setupDidYouKnow() {
+  document.getElementById("dykClose").addEventListener("click", () => hideDYK(true));
+  document.getElementById("dykNext").addEventListener("click", () => surfaceDYK());
+  document.getElementById("dykVisit").addEventListener("click", () => {
+    if (!DYK.current) return;
+    const id = DYK.current.topic.id;
+    hideDYK(false);
+    navigateToHit({ id, kind: "topic", name: DYK.current.topic.name });
+  });
+
+  // first card after 30s; subsequent every ~45-90s
+  DYK.nextScheduledAt = performance.now() + 30_000;
+  setInterval(maybeTickDYK, 2500);
+}
+
+function maybeTickDYK() {
+  if (state.mode !== "galaxy") return;
+  if (DYK.visible) return;
+  // Don't fire while user is actively interacting (drag, scroll)
+  if (performance.now() - state.lastInteract < 3000) return;
+  if (performance.now() < DYK.nextScheduledAt) return;
+  surfaceDYK();
+}
+
+function surfaceDYK() {
+  const pick = pickRandomFact();
+  if (!pick) return;
+  DYK.current = pick;
+  document.getElementById("dykTopic").textContent = pick.topic.name;
+  document.getElementById("dykBody").textContent = pick.fact;
+  const card = document.getElementById("didYouKnow");
+  card.hidden = false;
+  DYK.visible = true;
+  // accent the topic-color on the eyebrow dot via inline border
+  card.style.borderColor = pick.topic.color;
+  clearTimeout(DYK.autoHideTimer);
+  DYK.autoHideTimer = setTimeout(() => hideDYK(true), 22_000);
+}
+
+function hideDYK(rescheduleSoon) {
+  const card = document.getElementById("didYouKnow");
+  if (card) card.hidden = true;
+  DYK.visible = false;
+  clearTimeout(DYK.autoHideTimer);
+  // schedule the next surface: 45-90s away, slightly randomized
+  DYK.nextScheduledAt = performance.now() + (rescheduleSoon ? 45_000 : 60_000) + Math.random() * 30_000;
+}
+
+function pickRandomFact() {
+  // shuffle a candidate pool of all (topic, fact) tuples and find the first unseen one
+  const pool = [];
+  for (const t of TOPICS) {
+    for (const f of factsFor(t)) pool.push({ topic: t, fact: f });
+  }
+  if (pool.length === 0) return null;
+  // shuffle in place using fisher-yates
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  // skip ones already shown this session unless pool is exhausted
+  for (const candidate of pool) {
+    const key = candidate.topic.id + "::" + candidate.fact.slice(0, 40);
+    if (!DYK.shownThisSession.has(key)) {
+      DYK.shownThisSession.add(key);
+      return candidate;
+    }
+  }
+  // exhausted — reset and re-pick
+  DYK.shownThisSession.clear();
+  return pool[0];
+}
+
+/* Harvest a topic's short surprising lines from its existing content. */
+function factsFor(topic) {
+  const facts = [];
+  for (const node of topic.conclusionBody || []) {
+    if (node.type === "ul") {
+      for (const item of node.items) {
+        if (item && item.length >= 40 && item.length <= 260) facts.push(item);
+      }
+    }
+  }
+  for (const doc of topic.documents || []) {
+    for (const f of (doc.findings || [])) {
+      if (f && f.length >= 40 && f.length <= 260) facts.push(f);
+    }
+  }
+  return facts;
+}
+
 function attachUI() {
   document.getElementById("btn-return-galaxy").addEventListener("click", () => {
     // dynamic: in moon → planet; in planet → galaxy
@@ -2361,6 +2514,9 @@ function attachUI() {
 
   // search
   setupSearch();
+
+  // incidental knowledge
+  setupDidYouKnow();
 
   // draggable windows
   setupDraggable(document.getElementById("guide"), document.getElementById("guideDragHandle"), "motu.win.guide");
@@ -3092,6 +3248,7 @@ function addTopicNode(topic) {
   const node = makeTopicNode(topic);
   state.topicGroup.add(node);
   state.topicMeshes.set(topic.id, node);
+  addStarLabel(topic);
 
   // bloom-in animation
   let s = 0.001;
