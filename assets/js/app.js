@@ -102,6 +102,89 @@ function scheduleBootDismiss() {
     const b = document.getElementById("boot");
     if (b) b.remove();
   }, 9000);
+  // ascending chakra tones, scheduled at the same instants the chakras flare
+  setTimeout(() => playBootChakraTones(), 80);
+  // try to resume audio context on first user gesture (in case autoplay was blocked)
+  const resumeOnGesture = () => {
+    if (_audioCtx && _audioCtx.state === "suspended") _audioCtx.resume().catch(() => {});
+    window.removeEventListener("pointerdown", resumeOnGesture);
+    window.removeEventListener("keydown", resumeOnGesture);
+  };
+  window.addEventListener("pointerdown", resumeOnGesture, { once: true });
+  window.addEventListener("keydown", resumeOnGesture, { once: true });
+}
+
+let _audioCtx = null;
+function getAudioContext() {
+  if (_audioCtx) return _audioCtx;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    _audioCtx = new Ctx();
+    return _audioCtx;
+  } catch (e) { return null; }
+}
+
+/* Seven crystal-bell tones ascending the chakra scale (C5 root → B5 crown).
+   Each tone has a primary sine + an octave sparkle harmonic, with a soft
+   attack and long exponential decay. They overlap into a C-major chord. */
+const CHAKRA_TONES = [
+  { freq: 523.25, when: 0.20 },  // C5 — root
+  { freq: 587.33, when: 0.60 },  // D5 — sacral
+  { freq: 659.25, when: 1.00 },  // E5 — solar
+  { freq: 698.46, when: 1.40 },  // F5 — heart
+  { freq: 783.99, when: 1.80 },  // G5 — throat
+  { freq: 880.00, when: 2.25 },  // A5 — third eye
+  { freq: 987.77, when: 2.65 },  // B5 — crown
+];
+
+function playBootChakraTones() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
+  for (const t of CHAKRA_TONES) playGlassBell(ctx, t.freq, t.when);
+}
+
+function playGlassBell(ctx, freq, when) {
+  const t0 = ctx.currentTime + when;
+  // primary sine
+  const o1 = ctx.createOscillator();
+  o1.type = "sine";
+  o1.frequency.setValueAtTime(freq, t0);
+  // slight chorus-like detune for "water glass" body
+  const o1b = ctx.createOscillator();
+  o1b.type = "sine";
+  o1b.frequency.setValueAtTime(freq * 1.003, t0);
+  // octave harmonic for crystalline sparkle
+  const o2 = ctx.createOscillator();
+  o2.type = "sine";
+  o2.frequency.setValueAtTime(freq * 2.001, t0);
+  // gentle low-pass for warmth
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(4200, t0);
+  // envelopes
+  const g1 = ctx.createGain();
+  g1.gain.setValueAtTime(0, t0);
+  g1.gain.linearRampToValueAtTime(0.28, t0 + 0.05);
+  g1.gain.exponentialRampToValueAtTime(0.0005, t0 + 4.5);
+  const g1b = ctx.createGain();
+  g1b.gain.setValueAtTime(0, t0);
+  g1b.gain.linearRampToValueAtTime(0.10, t0 + 0.05);
+  g1b.gain.exponentialRampToValueAtTime(0.0005, t0 + 3.5);
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0, t0);
+  g2.gain.linearRampToValueAtTime(0.07, t0 + 0.02);
+  g2.gain.exponentialRampToValueAtTime(0.0005, t0 + 2.8);
+  // overall master so all tones don't compound too loud
+  const master = ctx.createGain();
+  master.gain.value = 0.55;
+  o1.connect(g1); o1b.connect(g1b); o2.connect(g2);
+  g1.connect(filter); g1b.connect(filter); g2.connect(filter);
+  filter.connect(master).connect(ctx.destination);
+  o1.start(t0); o1.stop(t0 + 4.7);
+  o1b.start(t0); o1b.stop(t0 + 3.7);
+  o2.start(t0); o2.stop(t0 + 3.0);
 }
 
 /**
@@ -1137,14 +1220,16 @@ function startLoop() {
     // starfield twinkle
     state.starfield.material.uniforms.uTime.value = t;
 
-    // slow idle galaxy rotation (resumes a few seconds after last user input)
+    // turntable showcase rotation — always on in galaxy view, ramps back in after user input
     if (state.mode === "galaxy" && state.topicGroup) {
-      const idleFor = performance.now() - state.lastInteract;
-      if (idleFor > 2500) {
-        state.topicGroup.rotation.y += dt * 0.035;
-        if (state.edgeLines) state.edgeLines.rotation.y = state.topicGroup.rotation.y;
-        state.starfield.rotation.y -= dt * 0.006;  // parallax counter-drift
-      }
+      const since = performance.now() - state.lastInteract;
+      // ease back to full speed over 1.8s after the user releases controls
+      const speedFactor = Math.min(1, since / 1800);
+      const baseSpeed = 0.055;
+      const rot = dt * baseSpeed * speedFactor;
+      state.topicGroup.rotation.y += rot;
+      if (state.edgeLines) state.edgeLines.rotation.y = state.topicGroup.rotation.y;
+      state.starfield.rotation.y -= rot * 0.16;  // gentle parallax counter-drift
     }
 
     // advance any in-flight idea-cannonballs
@@ -2370,22 +2455,14 @@ async function elRestoreConnected() {
   document.querySelectorAll("input[name='elModel']").forEach(r => r.checked = (r.value === TTS.elModel));
   populateVoiceSelect();
 
-  const userPicked = localStorage.getItem("motu.tts.userPickedVoice") === "true";
-  const prev = localStorage.getItem("motu.tts.unifiedKey") || "";
+  // Lily is the project's representative voice. ALWAYS default to her on
+  // every connect/restore. Within-session dropdown changes still apply,
+  // but the next reload resets to Lily.
+  const pref = pickPreferredElVoice();
   const sel = document.getElementById("voiceSelect");
-
-  if (userPicked && prev) {
-    // honor the user's explicit selection
-    sel.value = prev;
-    if (sel.value === prev) applyVoiceSelection(prev);
-    else { sel.selectedIndex = 0; applyVoiceSelection(sel.value); }
-  } else {
-    // no explicit pick recorded — always default to the project's representative voice (Lily)
-    const pref = pickPreferredElVoice();
-    if (pref) {
-      sel.value = `elevenlabs:${pref.voice_id}`;
-      applyVoiceSelection(sel.value);
-    }
+  if (pref) {
+    sel.value = `elevenlabs:${pref.voice_id}`;
+    applyVoiceSelection(sel.value);
   }
   await refreshElQuota();
 }
@@ -2461,10 +2538,8 @@ function setupSettingsPanel() {
     document.getElementById("modal-settings").hidden = false;
     refreshElQuota();
   });
-  // unified voice picker — handles both browser and elevenlabs entries
+  // unified voice picker — works within this session, but next reload still resets to Lily
   document.getElementById("voiceSelect").addEventListener("change", (e) => {
-    // mark as an explicit user choice so future auto-defaults don't override it
-    localStorage.setItem("motu.tts.userPickedVoice", "true");
     applyVoiceSelection(e.target.value);
   });
 
@@ -2543,6 +2618,312 @@ function setupSettingsPanel() {
     // reload voices and reselect default
     loadVoices();
   });
+}
+
+/* ============================================================
+   Background music — composed via ElevenLabs music API
+   ------------------------------------------------------------
+   The user composes a loop once; it's stored as a blob URL in
+   memory and looped via HTMLAudioElement. Tiny dock with
+   play/pause + volume + "compose new". Volume persists.
+   ============================================================ */
+const MUSIC = {
+  audio: null,
+  blobUrl: null,
+  composing: false,
+  volume: parseFloat(localStorage.getItem("motu.music.volume") || "0.45"),
+};
+
+const MUSIC_PROMPT = "Mystical New Age ambient. Slow tempo. Sustained ethereal pads, soft bell tones, distant choral hums, gentle cosmic atmosphere. Vast and loopy. No drums, no vocals with lyrics. Suitable as continuous library background.";
+
+function setupMusic() {
+  document.getElementById("musicMini").addEventListener("click", () => {
+    const exp = document.getElementById("musicExpand");
+    exp.hidden = !exp.hidden;
+  });
+  document.getElementById("musicPlay").addEventListener("click", musicTogglePlay);
+  document.getElementById("musicCompose").addEventListener("click", composeMusic);
+  const vol = document.getElementById("musicVolume");
+  vol.value = MUSIC.volume;
+  vol.addEventListener("input", (e) => {
+    MUSIC.volume = parseFloat(e.target.value);
+    if (MUSIC.audio) MUSIC.audio.volume = MUSIC.volume;
+    localStorage.setItem("motu.music.volume", String(MUSIC.volume));
+  });
+}
+
+async function composeMusic() {
+  if (!TTS.elKey) {
+    toast("connect ElevenLabs in Settings first");
+    return;
+  }
+  if (MUSIC.composing) return;
+  MUSIC.composing = true;
+  setMusicStatus("composing… (~30s)");
+  document.getElementById("musicCompose").disabled = true;
+
+  try {
+    // Stop and dispose previous audio
+    if (MUSIC.audio) { try { MUSIC.audio.pause(); } catch (_) {} MUSIC.audio = null; }
+    if (MUSIC.blobUrl) { URL.revokeObjectURL(MUSIC.blobUrl); MUSIC.blobUrl = null; }
+
+    const resp = await fetch("https://api.elevenlabs.io/v1/music/compose", {
+      method: "POST",
+      headers: {
+        "xi-api-key": TTS.elKey,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+      },
+      body: JSON.stringify({
+        prompt: MUSIC_PROMPT,
+        music_length_ms: 120000,   // 2 minutes; will loop
+        output_format: "mp3_44100_128",
+      }),
+    });
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`API ${resp.status}: ${txt.slice(0, 140)}`);
+    }
+    const blob = await resp.blob();
+    MUSIC.blobUrl = URL.createObjectURL(blob);
+    MUSIC.audio = new Audio(MUSIC.blobUrl);
+    MUSIC.audio.loop = true;
+    MUSIC.audio.volume = MUSIC.volume;
+    await MUSIC.audio.play().catch(() => {});
+    setMusicStatus("playing");
+    showMusicPlayBtn(true);
+    document.getElementById("musicMini").classList.add("playing");
+  } catch (err) {
+    console.warn("[music] compose failed", err);
+    setMusicStatus(`failed: ${err.message?.slice(0,40) || "unknown"}`);
+    toast(`music: ${err.message?.slice(0,80) || "compose failed"}`);
+  } finally {
+    MUSIC.composing = false;
+    document.getElementById("musicCompose").disabled = false;
+  }
+}
+
+function musicTogglePlay() {
+  if (!MUSIC.audio) return;
+  if (MUSIC.audio.paused) {
+    MUSIC.audio.play().catch(() => {});
+    setMusicStatus("playing");
+    setMusicPlayIcon(false);
+    document.getElementById("musicMini").classList.add("playing");
+  } else {
+    MUSIC.audio.pause();
+    setMusicStatus("paused");
+    setMusicPlayIcon(true);
+    document.getElementById("musicMini").classList.remove("playing");
+  }
+}
+
+function showMusicPlayBtn(visible) {
+  const btn = document.getElementById("musicPlay");
+  btn.hidden = !visible;
+  setMusicPlayIcon(false);
+}
+function setMusicPlayIcon(paused) {
+  const playI = document.querySelector("#musicPlay .music-icon-play");
+  const pauseI = document.querySelector("#musicPlay .music-icon-pause");
+  if (paused) { playI.hidden = false; pauseI.hidden = true; }
+  else        { playI.hidden = true;  pauseI.hidden = false; }
+}
+function setMusicStatus(s) {
+  const el = document.getElementById("musicStatus");
+  if (el) el.textContent = s;
+}
+
+/* ============================================================
+   Dictionary — hover any word to define it, with audio
+   ------------------------------------------------------------
+   Uses dictionaryapi.dev (free, CORS-open). On toggle, mousemove
+   over text triggers word-at-cursor detection via caret APIs;
+   after a short dwell, fetch and show a popup with phonetic,
+   audio MP3, and brief definition. Caches per-session in memory.
+   ============================================================ */
+const DICT = {
+  enabled: localStorage.getItem("motu.dictionaryOn") === "true",
+  cache: new Map(),
+  currentWord: null,
+  dwellTimer: null,
+  stopwords: new Set([
+    "the","a","an","and","or","but","of","in","on","at","to","for","with","by",
+    "is","are","was","were","be","been","being","have","has","had","do","does","did",
+    "will","would","could","should","may","might","must","can","this","that","these","those",
+    "it","its","they","them","their","we","us","our","you","your","he","him","his","she","her",
+    "i","me","my","as","if","so","than","then","when","while","also","into","from","not","no","yes",
+  ]),
+};
+
+function setupDictionary() {
+  const btn = document.getElementById("btn-dictionary");
+  btn.addEventListener("click", toggleDictionary);
+  applyDictionaryState();
+
+  // mousemove with dwell detection — only when enabled
+  document.addEventListener("mousemove", onDictMove);
+  document.addEventListener("mouseleave", hideDictPopup);
+
+  // close popup when user moves to a different area
+  document.getElementById("dictAudioBtn").addEventListener("click", () => {
+    if (DICT.lastAudio) { try { new Audio(DICT.lastAudio).play(); } catch (e) {} }
+  });
+}
+
+function toggleDictionary() {
+  DICT.enabled = !DICT.enabled;
+  localStorage.setItem("motu.dictionaryOn", String(DICT.enabled));
+  applyDictionaryState();
+  toast(DICT.enabled ? "dictionary on — hover any word" : "dictionary off");
+}
+
+function applyDictionaryState() {
+  const btn = document.getElementById("btn-dictionary");
+  if (DICT.enabled) {
+    document.body.classList.add("dictionary-on");
+    btn.classList.add("active");
+    btn.style.background = "rgba(167,139,250,0.28)";
+    btn.style.borderColor = "var(--accent)";
+  } else {
+    document.body.classList.remove("dictionary-on");
+    btn.classList.remove("active");
+    btn.style.background = "";
+    btn.style.borderColor = "";
+    hideDictPopup();
+  }
+}
+
+function onDictMove(e) {
+  if (!DICT.enabled) return;
+  // skip while inside the popup itself (so user can click audio)
+  if (e.target.closest("#dictPopup")) return;
+  clearTimeout(DICT.dwellTimer);
+  DICT.dwellTimer = setTimeout(() => {
+    const found = wordAtPoint(e.clientX, e.clientY);
+    if (!found) { hideDictPopup(); return; }
+    const word = sanitizeWord(found.word);
+    if (!word || word.length < 3 || DICT.stopwords.has(word)) { hideDictPopup(); return; }
+    if (word === DICT.currentWord) return;   // unchanged
+    DICT.currentWord = word;
+    showDictPopup(word, found.rect, e.clientX, e.clientY);
+  }, 380);
+}
+
+function wordAtPoint(x, y) {
+  let range;
+  if (document.caretRangeFromPoint) {
+    range = document.caretRangeFromPoint(x, y);
+  } else if (document.caretPositionFromPoint) {
+    const pos = document.caretPositionFromPoint(x, y);
+    if (pos) { range = document.createRange(); range.setStart(pos.offsetNode, pos.offset); range.collapse(true); }
+  }
+  if (!range) return null;
+  const node = range.startContainer;
+  if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+  // skip text inside interactive elements (buttons, inputs) — distracting
+  const el = node.parentElement;
+  if (!el || el.closest("button, input, textarea, select, .star-label, .tts-btn")) return null;
+  const text = node.textContent;
+  let start = range.startOffset, end = range.startOffset;
+  // include letters, hyphens, apostrophes
+  const isWord = (c) => /[\p{L}\p{N}'-]/u.test(c);
+  while (start > 0 && isWord(text[start - 1])) start--;
+  while (end < text.length && isWord(text[end])) end++;
+  if (start === end) return null;
+  const word = text.slice(start, end);
+  // get bounding rect of the word so popup can position above it
+  const r = document.createRange();
+  r.setStart(node, start);
+  r.setEnd(node, end);
+  const rect = r.getBoundingClientRect();
+  return { word, rect };
+}
+
+function sanitizeWord(w) {
+  return w.toLowerCase().replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
+}
+
+function hideDictPopup() {
+  const pop = document.getElementById("dictPopup");
+  if (pop) pop.hidden = true;
+  DICT.currentWord = null;
+}
+
+async function showDictPopup(word, wordRect, mouseX, mouseY) {
+  const pop = document.getElementById("dictPopup");
+  document.getElementById("dictWord").textContent = word;
+  document.getElementById("dictPhonetic").textContent = "";
+  document.getElementById("dictAudioBtn").hidden = true;
+  document.getElementById("dictBody").textContent = "looking up…";
+  pop.hidden = false;
+  positionDictPopup(pop, wordRect, mouseX, mouseY);
+
+  // fetch or return cached
+  let data;
+  if (DICT.cache.has(word)) {
+    data = DICT.cache.get(word);
+  } else {
+    try {
+      const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+      if (!r.ok) { data = { error: r.status === 404 ? "no definition found" : `api ${r.status}` }; }
+      else { data = await r.json(); }
+    } catch (e) { data = { error: "lookup failed" }; }
+    DICT.cache.set(word, data);
+  }
+
+  // race: if user moved on already, don't overwrite the now-hidden popup
+  if (DICT.currentWord !== word) return;
+
+  if (data?.error) {
+    document.getElementById("dictBody").innerHTML = `<span class="dict-error">${escapeHtml(data.error)}</span>`;
+    return;
+  }
+  renderDictEntry(data);
+}
+
+function renderDictEntry(data) {
+  const entry = Array.isArray(data) ? data[0] : data;
+  if (!entry) return;
+  // phonetic + audio
+  const phonetic = entry.phonetic || (entry.phonetics || []).find(p => p.text)?.text || "";
+  const audio = (entry.phonetics || []).find(p => p.audio)?.audio || null;
+  document.getElementById("dictPhonetic").textContent = phonetic;
+  const audioBtn = document.getElementById("dictAudioBtn");
+  if (audio) {
+    audioBtn.hidden = false;
+    DICT.lastAudio = audio;
+  } else {
+    audioBtn.hidden = true;
+    DICT.lastAudio = null;
+  }
+  // up to 2 meanings, first 1 definition each
+  const meanings = (entry.meanings || []).slice(0, 2);
+  const body = document.getElementById("dictBody");
+  body.innerHTML = "";
+  for (const m of meanings) {
+    const def = (m.definitions || [])[0];
+    if (!def) continue;
+    const wrap = document.createElement("div");
+    wrap.className = "dict-meaning";
+    wrap.innerHTML = `<span class="dict-pos">${escapeHtml(m.partOfSpeech || "")}</span>${escapeHtml(def.definition || "")}${def.example ? `<div class="dict-example">"${escapeHtml(def.example)}"</div>` : ""}`;
+    body.appendChild(wrap);
+  }
+}
+
+function positionDictPopup(pop, wordRect, mouseX, mouseY) {
+  pop.style.left = "0px"; pop.style.top = "0px";
+  // measure
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  // prefer above the word
+  let x = (wordRect.left + wordRect.right) / 2 - w / 2;
+  let y = wordRect.top - h - 8;
+  if (y < 8) y = wordRect.bottom + 8;   // flip below if no room above
+  x = Math.max(8, Math.min(vw - w - 8, x));
+  y = Math.max(8, Math.min(vh - h - 8, y));
+  pop.style.left = `${x}px`;
+  pop.style.top = `${y}px`;
 }
 
 /* ============================================================
@@ -2739,6 +3120,12 @@ function attachUI() {
 
   // incidental knowledge
   setupDidYouKnow();
+
+  // dictionary hover
+  setupDictionary();
+
+  // background music
+  setupMusic();
 
   // draggable windows
   setupDraggable(document.getElementById("guide"), document.getElementById("guideDragHandle"), "motu.win.guide");
