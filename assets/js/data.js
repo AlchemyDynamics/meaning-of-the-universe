@@ -865,7 +865,6 @@ export const TOPICS = [
       },
     ],
   },
-];
 
   /* ─────────────────────────  CONSCIOUSNESS  ───────────────────────── */
   {
@@ -1308,6 +1307,7 @@ export const TOPICS = [
       },
     ],
   },
+];
 
 /* ============================================================
    Sub-topics — orbiting moons under a parent topic.
