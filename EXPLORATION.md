@@ -6,7 +6,9 @@ The model is the encyclopedia. Old encyclopedias rewarded wandering: the index d
 
 ---
 
-## Mechanics — Shipped
+## Mechanics — Shipped (this section updated 2026-05-16)
+
+The library now ships with substantially more incidental-discovery affordance than the original draft listed. Below is the current state:
 
 ### Galaxy as ambient browse
 Stars carry their topic names as projected labels. Slow idle rotation when you sit still. Hover for tooltip, click to enter. The galaxy is the index; the act of looking around IS browsing.
@@ -30,8 +32,35 @@ Tags at the bottom of every planet/moon panel are clickable. Each click either w
 ### Cannonball collisions
 Smash two topics together to generate a poetic synthesis as a new star. The graph grows from your curiosity.
 
+### Multi-star fusion
+Shift-click any number of stars (2+) to gather them into a selection. A floating bar appears with `clear` and `fuse →`. On fuse, Opus forges a synthesis from all selected ideas and offers 3-4 candidate titles. Pick one or write your own — a new star spawns at the centroid, connected to every parent.
+
 ### Connections panel + manual add
 Every star shows its galactic neighbors. A `+ add connection` button at the bottom lets you forge new edges between any two stars.
+
+### Tag visual distinction
+Tags at the bottom of every planet now indicate, before you click, whether they'll *warp you* (small `→` prefix, solid border — match found) or *generate a new entry* (dashed border + `+` suffix). No surprise toast.
+
+### "See also" navigation at the end of conclusions
+The distilled-conclusion modal now appends a row of see-also pills at the bottom — no more dead-end after reading.
+
+### Document reader prev / next
+Inside the document modal, each document now ends with prev / next buttons so you can read the whole topic's documents in sequence without bouncing back to the list.
+
+### Wander
+`⟲ wander` chip in the top-right HUD warps to a random topic. Pure serendipity.
+
+### Keys help
+`?keys` chip opens a modal with every keyboard / interaction shortcut. The most distinctive features (multi-star fusion via shift-click) now have explicit discoverability.
+
+### Skippable boot
+Any click or keypress after a 600ms grace period dismisses the chakra boot animation. Power users on repeat visits don't have to wait.
+
+### Rebuild this entry
+Every planet has a `rebuild this entry` menu button. Calls Opus with web search + Semantic Scholar grounding to regenerate the topic with current schema (real source citations, index card, full documents). Persists per-topic in localStorage as an override.
+
+### Star tooltips with fusion hint
+Hovering a star shows its name, cluster, document count, AND the hint "shift-click to fuse" — so users discover multi-fusion through the natural hover interaction.
 
 ---
 

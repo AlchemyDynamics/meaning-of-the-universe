@@ -91,6 +91,15 @@ window.addEventListener("DOMContentLoaded", () => {
     startBootCameraRush();
     document.getElementById("topicCount").textContent = TOPICS.length;
     document.getElementById("docCount").textContent = TOPICS.reduce((a, t) => a + t.documents.length, 0);
+    // First-run hint: surface the value available without an API key, plus the upgrade path.
+    if (!state.guideKey && !localStorage.getItem("motu.firstRunHinted")) {
+      setTimeout(() => {
+        if (state.mode === "galaxy") {
+          toast(`${TOPICS.length} topics ready — click any star to explore · paste a Claude key in The Librarian to grow the library`);
+          localStorage.setItem("motu.firstRunHinted", "1");
+        }
+      }, 10500);
+    }
   } catch (err) {
     console.error("[init] failed", err);
     setBootStatus("init failed — see browser console");
@@ -3403,7 +3412,16 @@ function attachUI() {
       if (action === "conclusion") openConclusion(entry);
       else if (action === "documents") openDocuments(entry);
       else if (action === "connections") openConnections(entry);
-      else if (action === "ask-guide") openGuide();
+      else if (action === "ask-guide") {
+        openGuide();
+        // pre-seed an open question so the user has a productive starting point
+        const input = document.getElementById("guideInput");
+        if (input && !input.value) {
+          input.value = `What's most worth knowing about ${entry.name}?`;
+          input.focus();
+          input.setSelectionRange(0, input.value.length);
+        }
+      }
       else if (action === "regenerate") regenerateEntry(entry);
     });
   });
