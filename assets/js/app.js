@@ -2114,6 +2114,89 @@ function currentEntry() {
 }
 
 /* ============================================================
+   Title rename — let the learner name their own stars
+   ------------------------------------------------------------
+   The planet title is contenteditable on click. Enter or blur
+   commits; Esc cancels. Renames persist via the override system
+   (motu.override.<id>) so the seed topic name in data.js is
+   never destructively edited — the user's name wins on load.
+   ============================================================ */
+function setupTitleRename() {
+  const titleEl = document.getElementById("planetTitle");
+  if (!titleEl) return;
+  let oldName = "";
+
+  titleEl.addEventListener("click", () => {
+    if (titleEl.isContentEditable) return;       // already editing
+    const entry = currentEntry();
+    if (!entry) return;
+    oldName = titleEl.textContent;
+    titleEl.contentEditable = "true";
+    titleEl.spellcheck = false;
+    titleEl.focus();
+    // select all text
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(titleEl);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+
+  titleEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); titleEl.blur(); }
+    if (e.key === "Escape") { e.preventDefault(); titleEl.textContent = oldName; titleEl.blur(); }
+  });
+
+  titleEl.addEventListener("blur", () => {
+    if (!titleEl.isContentEditable) return;
+    titleEl.contentEditable = "false";
+    const entry = currentEntry();
+    if (!entry) return;
+    const newName = titleEl.textContent.replace(/\s+/g, " ").trim();
+    if (!newName) {
+      titleEl.textContent = oldName;
+      return;
+    }
+    if (newName === oldName) return;
+    entry.name = newName;
+    titleEl.textContent = newName;
+    persistRename(entry);
+    refreshStarLabel(entry);
+    refreshGuideContext(entry);
+    toast(`renamed → ${newName}`);
+  });
+
+  // Prevent rich-paste from polluting the title (only plain text allowed)
+  titleEl.addEventListener("paste", (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData("text").replace(/\s+/g, " ").trim();
+    document.execCommand("insertText", false, text);
+  });
+}
+
+function persistRename(entry) {
+  try {
+    const key = `motu.override.${entry.id}`;
+    const raw = localStorage.getItem(key);
+    const data = raw ? JSON.parse(raw) : {};
+    data.name = entry.name;
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) { handleQuotaError(e); }
+}
+
+function refreshStarLabel(entry) {
+  const label = state.starLabels?.get(entry.id);
+  if (!label) return;
+  // rebuild label content with the new name
+  label.innerHTML = `<span class="star-label-dot" style="background:${entry.color};color:${entry.color}"></span>${escapeHtml(entry.name)}`;
+}
+
+function refreshGuideContext(entry) {
+  const label = state.currentMoon ? `moon — ${entry.name}` : `planet — ${entry.name}`;
+  updateGuideContext(label);
+}
+
+/* ============================================================
    Listen tracking — per-topic / per-kind listen time + completion.
    Persisted to localStorage as motu.listenStats. Used as a
    weighted-interest signal for new content generation.
@@ -3608,6 +3691,9 @@ function factsFor(topic) {
 }
 
 function attachUI() {
+  // Inline rename: click the planet title to edit. Enter or blur commits; Esc cancels.
+  setupTitleRename();
+
   document.getElementById("btn-return-galaxy").addEventListener("click", () => {
     // dynamic: in moon → planet; in planet → galaxy
     if (state.currentMoon) returnToPlanet();
