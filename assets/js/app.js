@@ -353,9 +353,9 @@ function initScene() {
   state.composer.addPass(new RenderPass(state.scene, state.camera));
   const bloom = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.32,  // strength — softer halo, less wash-out
-    0.55,  // radius
-    0.28   // threshold — only the bright cores bloom
+    0.14,  // strength — quiet glow, no wash-out
+    0.45,  // radius — tighter falloff
+    0.48   // threshold — only the brightest cores bloom at all
   );
   state.composer.addPass(bloom);
 
