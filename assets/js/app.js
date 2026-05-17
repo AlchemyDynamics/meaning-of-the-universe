@@ -55,6 +55,8 @@ const state = {
   // multi-star fusion via shift-select
   selectedStars: new Set(),
   pendingFusion: null,
+  // Flag: when the user arrives at a freshly-generated star, auto-play its narration.
+  autoNarrateOnArrival: false,
   // guide
   guideKey: localStorage.getItem("motu.guideKey") || "",
   guideHistory: (() => {
@@ -1516,7 +1518,7 @@ function startLoop() {
         state.cameraTargetPos = null;
         if (state.afterTransit === "planet") { state.mode = "planet"; onArriveAtPlanet(); }
         else if (state.afterTransit === "galaxy") { state.mode = "galaxy"; onArriveAtGalaxy(); }
-        else if (state.afterTransit === "moon") { state.mode = "moon"; }
+        else if (state.afterTransit === "moon") { state.mode = "moon"; onArriveAtMoon(); }
       }
     }
 
@@ -1675,7 +1677,20 @@ function enterPlanet(id) {
   updateGuideContext(`planet — ${topic.name}`);
 }
 
-function onArriveAtPlanet() { /* hook */ }
+function onArriveAtPlanet() {
+  // When the user lands on a freshly-generated star, auto-narrate the card.
+  // The flag is set by generation / fusion flows just before they call enterPlanet.
+  if (state.autoNarrateOnArrival && state.currentTopic) {
+    state.autoNarrateOnArrival = false;
+    setTimeout(() => {
+      // safety: only narrate if we're still on the planet view and not already speaking
+      if (state.mode !== "planet" || TTS.playing) return;
+      const text = cardReadAloud(state.currentTopic);
+      const btn = document.querySelector("[data-tts-card]");
+      startSpeech(text, btn);
+    }, 700);  // brief settling beat after the camera arrives
+  }
+}
 
 function returnToGalaxy() {
   disposeMoons();
@@ -1696,6 +1711,19 @@ function returnToGalaxy() {
 }
 
 function onArriveAtGalaxy() { /* hook */ }
+
+function onArriveAtMoon() {
+  // Same auto-narration as new stars, scoped to moons.
+  if (state.autoNarrateOnArrival && state.currentMoon) {
+    state.autoNarrateOnArrival = false;
+    setTimeout(() => {
+      if (state.mode !== "moon" || TTS.playing) return;
+      const text = cardReadAloud(state.currentMoon);
+      const btn = document.querySelector("[data-tts-card]");
+      startSpeech(text, btn);
+    }, 700);
+  }
+}
 
 /* ============================================================
    Planet HUD population
@@ -4203,7 +4231,7 @@ async function generateAndAddEntity(query) {
             buildMoons(state.currentTopic);
             setTimeout(() => {
               const rec = state.moonMeshes.find(m => m.id === result.entity.id);
-              if (rec) enterMoon(rec);
+              if (rec) { state.autoNarrateOnArrival = true; enterMoon(rec); }
             }, 100);
           }, 200);
         } else {
@@ -4212,7 +4240,7 @@ async function generateAndAddEntity(query) {
             enterPlanet(result.parent);
             setTimeout(() => {
               const rec = state.moonMeshes.find(m => m.id === result.entity.id);
-              if (rec) enterMoon(rec);
+              if (rec) { state.autoNarrateOnArrival = true; enterMoon(rec); }
             }, 1500);
           }, state.mode === "galaxy" ? 0 : 700);
         }
@@ -4245,6 +4273,7 @@ async function generateAndAddEntity(query) {
       setTimeout(() => {
         hideGenerationOverlay();
         if (state.mode === "planet" || state.mode === "moon") returnToGalaxy();
+        state.autoNarrateOnArrival = true;  // narrate the new star on arrival
         setTimeout(() => enterPlanet(topic.id), state.mode === "galaxy" ? 100 : 800);
       }, 900);
     }
@@ -5115,6 +5144,7 @@ function finalizeFusion(chosenName) {
     tags: exploreTags,
   });
   // warp in shortly after — user can dismiss the insight to explore the new star directly
+  state.autoNarrateOnArrival = true;
   setTimeout(() => enterPlanet(newTopic.id), 1100);
 }
 
