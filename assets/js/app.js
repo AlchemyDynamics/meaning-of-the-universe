@@ -222,41 +222,20 @@ const CHAKRA_TONES = [
   { freq: 1046.50, when: 2.90 },  // C6  — octave resolution
 ];
 
-let _bootTonesPlayed = false;
 function playBootChakraTones() {
   const ctx = getAudioContext();
   if (!ctx) return;
-
-  // Schedule from the current moment with the original spacing.
-  // If the audio context is suspended (autoplay policy), we'll fire on the
-  // first user gesture instead. Either way, the tones play in sequence.
-  const fireSequence = () => {
-    if (_bootTonesPlayed) return;
-    if (!ctx || ctx.state !== "running") return;
-    _bootTonesPlayed = true;
-    for (const t of CHAKRA_TONES) playGlassBell(ctx, t.freq, t.when);
-  };
-
-  // Try to start immediately. Most browsers will allow this if the user
-  // navigated to the page recently; many block it without explicit gesture.
-  if (ctx.state === "running") {
-    fireSequence();
-    return;
+  // Try to nudge the context to running synchronously. Browsers that allow
+  // it (recent gesture / no policy) will succeed; others stay suspended.
+  if (ctx.state !== "running") {
+    try { ctx.resume(); } catch (_) {}
   }
-  ctx.resume().then(() => fireSequence()).catch(() => {});
-
-  // Always also bind a one-shot gesture listener — guaranteed audio activation.
-  const onGesture = () => {
-    ctx.resume().then(() => fireSequence()).catch(() => {});
-    // If resume returns synchronously running in some browsers, schedule too:
-    if (ctx.state === "running") fireSequence();
-    window.removeEventListener("pointerdown", onGesture);
-    window.removeEventListener("keydown", onGesture);
-    window.removeEventListener("touchstart", onGesture);
-  };
-  window.addEventListener("pointerdown", onGesture, { once: true });
-  window.addEventListener("keydown", onGesture, { once: true });
-  window.addEventListener("touchstart", onGesture, { once: true });
+  // Deliberately do NOT bind a deferred gesture listener — late tones played
+  // on the user's first star click would feel disconnected from the chakra
+  // animation. If the context isn't running right now, accept silence; the
+  // tones belong to the intro or nowhere.
+  if (ctx.state !== "running") return;
+  for (const t of CHAKRA_TONES) playGlassBell(ctx, t.freq, t.when);
 }
 
 function playGlassBell(ctx, freq, when) {
