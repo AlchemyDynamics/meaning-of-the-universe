@@ -50,6 +50,56 @@ em { color: var(--ink-0); font-style: italic; }
 }
 .boot.fade { opacity: 0; pointer-events: none; }
 
+/* Before the user clicks "begin", every animation is paused. */
+.boot.before-begin .boot-chakra-stage,
+.boot.before-begin .chakra-wrap,
+.boot.before-begin .chakra,
+.boot.before-begin .chakra-wrap .petals,
+.boot.before-begin .boot-figure,
+.boot.before-begin .boot-text,
+.boot.before-begin .boot-thirdeye-portal {
+  animation-play-state: paused !important;
+}
+
+/* "begin" prompt — guarantees the user has gestured, so audio can play */
+.boot-begin-overlay {
+  position: absolute;
+  bottom: 20vh; left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  pointer-events: auto;
+}
+.boot-begin-btn {
+  padding: 14px 36px;
+  border-radius: 999px;
+  background: rgba(167,139,250,0.18);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid var(--accent);
+  font-family: var(--mono); font-size: 12px;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--ink-0);
+  box-shadow: 0 0 32px rgba(167,139,250,0.28);
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+  animation: beginBreath 2.6s ease-in-out infinite;
+}
+.boot-begin-btn:hover {
+  background: rgba(167,139,250,0.32);
+  transform: scale(1.04);
+  box-shadow: 0 0 48px rgba(167,139,250,0.45);
+}
+.boot-begin-btn:active { transform: scale(0.98); }
+.boot-begin-hint {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--ink-3); letter-spacing: 0.14em;
+  text-transform: lowercase;
+}
+@keyframes beginBreath {
+  0%, 100% { opacity: 0.92; }
+  50%      { opacity: 1; box-shadow: 0 0 48px rgba(167,139,250,0.45); }
+}
+
 /* When .opening is applied, the boot starts dissolving from a circular
    hole at the position of the third-eye chakra, revealing the canvas
    (and the Three.js galaxy mid-rush) behind it. */

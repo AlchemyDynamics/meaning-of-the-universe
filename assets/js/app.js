@@ -71,14 +71,16 @@ window.__motu = state; // debug handle
    Boot
    ============================================================ */
 window.addEventListener("DOMContentLoaded", () => {
-  // Build the chakra petal decorations before the boot animation runs.
+  // Build the chakra petal decorations so they're ready when the user clicks begin.
   buildChakraPetals();
-  // Always schedule the boot dismissal FIRST — independent of whether init succeeds.
-  // The chakra animation runs ~6s; the third-eye mask opens at 5s-7s; fade at 7.5s.
-  scheduleBootDismiss();
+
+  // The boot animation, audio, and camera rush are all gated behind the
+  // user's first click. This guarantees the AudioContext can unlock so the
+  // 8-note scale plays in sync with the chakra animation.
+  setupBootBegin();
 
   try {
-    setBootStatus("constructing the starfield…");
+    setBootStatus("ready — tap begin to enter");
     loadPersistedEntities();
     initScene();
     buildStarfield();
@@ -90,10 +92,47 @@ window.addEventListener("DOMContentLoaded", () => {
     setupSettingsPanel();
     bindTTSButtons();
     startLoop();
-    startBootCameraRush();
     document.getElementById("topicCount").textContent = TOPICS.length;
     document.getElementById("docCount").textContent = TOPICS.reduce((a, t) => a + t.documents.length, 0);
-    // First-run hint: surface the value available without an API key, plus the upgrade path.
+  } catch (err) {
+    console.error("[init] failed", err);
+    setBootStatus("init failed — see browser console");
+  }
+});
+
+function setupBootBegin() {
+  const boot = document.getElementById("boot");
+  if (!boot) return;
+  boot.classList.add("before-begin");
+
+  const overlay = document.createElement("div");
+  overlay.className = "boot-begin-overlay";
+  overlay.innerHTML = `
+    <button class="boot-begin-btn" id="bootBeginBtn">begin</button>
+    <span class="boot-begin-hint">tap to enter with sound</span>
+  `;
+  boot.appendChild(overlay);
+
+  let begun = false;
+  const beginBoot = () => {
+    if (begun) return;
+    begun = true;
+
+    // Unlock the audio context — this is the user gesture browsers require.
+    const ctx = getAudioContext();
+    if (ctx && ctx.state !== "running") {
+      try { ctx.resume(); } catch (_) {}
+    }
+
+    overlay.remove();
+    boot.classList.remove("before-begin");
+
+    // Now everything starts in sync:
+    playBootChakraTones();      // 8-note scale, in time with chakras
+    scheduleBootDismiss();      // 5s opening, 7.5s fade, 9s remove
+    startBootCameraRush();      // camera flies in from far during the boot
+
+    // First-run hint, scheduled relative to begin
     if (!state.guideKey && !localStorage.getItem("motu.firstRunHinted")) {
       setTimeout(() => {
         if (state.mode === "galaxy") {
@@ -102,11 +141,18 @@ window.addEventListener("DOMContentLoaded", () => {
         }
       }, 10500);
     }
-  } catch (err) {
-    console.error("[init] failed", err);
-    setBootStatus("init failed — see browser console");
-  }
-});
+
+    window.removeEventListener("keydown", keyBegin);
+  };
+  const keyBegin = (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      beginBoot();
+    }
+  };
+  document.getElementById("bootBeginBtn").addEventListener("click", beginBoot);
+  window.addEventListener("keydown", keyBegin);
+}
 
 function scheduleBootDismiss() {
   const bootStarted = performance.now();
