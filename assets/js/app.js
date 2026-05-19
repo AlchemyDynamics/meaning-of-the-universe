@@ -2344,6 +2344,8 @@ const TTS = {
   audioPartIndex: 0,
   pendingAbort: null,        // AbortController for in-flight fetch
   _token: 0,                 // race-protection for cache-aware async fetches
+  _elQuotaExhausted: false,  // set once an API call fails with quota / auth error
+  _quotaToastShown: false,
 };
 
 function initTTS() {
@@ -2628,9 +2630,15 @@ function startSpeechBrowser(text, btn) {
 }
 
 async function startSpeechElevenLabs(text, btn) {
+  // If we've already learned the EL quota is gone this session, skip directly to browser TTS
+  if (TTS._elQuotaExhausted) {
+    return startSpeechBrowser(text, btn);
+  }
   const voiceId = getSelectedElVoiceId();
-  if (!voiceId) { toast("Pick an ElevenLabs voice in Settings first"); return; }
-  if (!TTS.elKey) { toast("Connect ElevenLabs first"); return; }
+  if (!voiceId || !TTS.elKey) {
+    // no EL configured at all — quietly use the browser engine
+    return startSpeechBrowser(text, btn);
+  }
 
   TTS.playing = true;
   TTS.paused = false;
@@ -2638,7 +2646,7 @@ async function startSpeechElevenLabs(text, btn) {
   if (btn) { btn.classList.add("playing"); showStopFor(btn); }
 
   const cacheKey = `${voiceId}:${TTS.elModel}:${simpleHash(text)}`;
-  const speechToken = ++TTS._token;   // race-protection: drop stale resolutions
+  const speechToken = ++TTS._token;
 
   try {
     // 1. cache hit?
@@ -2646,7 +2654,7 @@ async function startSpeechElevenLabs(text, btn) {
     if (speechToken !== TTS._token || !TTS.playing) return;
     let fromCache = !!blob;
 
-    // 2. cache miss → fetch full audio in one request (then cache it)
+    // 2. cache miss → fetch full audio
     if (!blob) {
       if (btn) {
         const label = btn.querySelector(".tts-label");
@@ -2655,7 +2663,6 @@ async function startSpeechElevenLabs(text, btn) {
       TTS.pendingAbort = new AbortController();
       blob = await elFetchFullAudio(text, voiceId, TTS.pendingAbort.signal);
       if (speechToken !== TTS._token || !TTS.playing) return;
-      // cache asynchronously — failure is non-fatal
       saveCachedTTS(cacheKey, blob).catch(() => {});
     }
 
@@ -2666,14 +2673,37 @@ async function startSpeechElevenLabs(text, btn) {
     restoreBtnLabel(btn);
     setBtnLabel(btn, "pause");
     playElevenPart(0);
-    if (!fromCache) refreshElQuota();   // only refresh quota when we actually spent it
+    if (!fromCache) refreshElQuota();
   } catch (err) {
     restoreBtnLabel(btn);
+    // Quota / auth failure → flip to browser voice for the rest of the session.
+    // Cached entries still play in Lily; uncached entries get the browser fallback.
+    if (isElQuotaError(err)) {
+      TTS._elQuotaExhausted = true;
+      stopSpeech();    // reset state cleanly
+      if (!TTS._quotaToastShown) {
+        TTS._quotaToastShown = true;
+        toast("ElevenLabs quota reached — using browser voice. Cached entries still play in Lily.");
+      }
+      // play this entry on the browser engine
+      return startSpeechBrowser(text, btn);
+    }
     if (err.name !== "AbortError") {
       toast(`audio: ${err.message?.slice(0, 80) || "request failed"}`);
     }
     stopSpeech();
   }
+}
+
+/* Detect any ElevenLabs error that means "you can't keep using this key right now". */
+function isElQuotaError(err) {
+  const msg = String(err?.message || "").toLowerCase();
+  return msg.includes("quota") ||
+         msg.includes("rate limit") ||
+         msg.includes("rate-limit") ||
+         msg.includes("subscription") ||
+         msg.includes("payment") ||
+         /api\s*(401|402|403|429)/.test(msg);
 }
 
 async function elFetchFullAudio(text, voiceId, signal) {
