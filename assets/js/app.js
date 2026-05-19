@@ -3576,6 +3576,10 @@ async function setupMusic() {
     exp.hidden = !exp.hidden;
   });
   document.getElementById("musicPlay").addEventListener("click", musicTogglePlay);
+  document.getElementById("musicDockPause").addEventListener("click", (e) => {
+    e.stopPropagation();
+    musicTogglePlay();
+  });
   document.getElementById("musicPrev").addEventListener("click", () => switchTrack(-1));
   document.getElementById("musicNext").addEventListener("click", () => switchTrack(+1));
   document.getElementById("musicCompose").addEventListener("click", composeMusic);
@@ -3763,11 +3767,23 @@ function renderTrackList() {
 }
 
 function setMusicPlayIcon(paused) {
-  const playI = document.querySelector("#musicPlay .music-icon-play");
-  const pauseI = document.querySelector("#musicPlay .music-icon-pause");
-  if (!playI || !pauseI) return;
-  if (paused) { playI.hidden = false; pauseI.hidden = true; }
-  else        { playI.hidden = true;  pauseI.hidden = false; }
+  const targets = [
+    document.querySelector("#musicPlay .music-icon-play"),
+    document.querySelector("#musicPlay .music-icon-pause"),
+    document.querySelector("#musicDockPause .music-icon-play"),
+    document.querySelector("#musicDockPause .music-icon-pause"),
+  ];
+  if (targets.some(t => !t)) return;
+  const [playInExpand, pauseInExpand, playOnDock, pauseOnDock] = targets;
+  if (paused) {
+    playInExpand.hidden = false; pauseInExpand.hidden = true;
+    playOnDock.hidden = false;   pauseOnDock.hidden = true;
+  } else {
+    playInExpand.hidden = true;  pauseInExpand.hidden = false;
+    playOnDock.hidden = true;    pauseOnDock.hidden = false;
+  }
+  const dockBtn = document.getElementById("musicDockPause");
+  if (dockBtn) dockBtn.classList.toggle("paused", !!paused);
 }
 function setMusicTrackName(name) {
   const el = document.getElementById("musicTrackName");

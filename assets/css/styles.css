@@ -1433,9 +1433,12 @@ body.dictionary-on .card { cursor: help; }
   transform: translateY(-50%);
   z-index: 22;
   display: flex; flex-direction: column; align-items: flex-start;
+  gap: 6px;
   pointer-events: none;
 }
 .music-dock > * { pointer-events: auto; }
+.music-dock-pause { color: var(--accent); }
+.music-dock-pause.paused { color: var(--ink-2); }
 .music-toggle-mini {
   width: 36px; height: 36px; border-radius: 50%;
   background: var(--glass); backdrop-filter: blur(10px);
