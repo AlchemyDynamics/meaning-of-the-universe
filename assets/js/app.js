@@ -1148,7 +1148,14 @@ function buildMoons(topic) {
     const halo = new THREE.Sprite(haloMat);
     halo.scale.set(size * 4, size * 4, 1);
 
-    group.add(body, halo);
+    // Invisible larger sphere — widens the hover/click hitbox to match the corona.
+    const hitGeo = new THREE.SphereGeometry(size * 2.4, 12, 12);
+    const hitMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, depthTest: false,
+    });
+    const hit = new THREE.Mesh(hitGeo, hitMat);
+
+    group.add(body, halo, hit);
 
     // orbit trail (faint ring tilted at orbit.tilt)
     const orbit = sub.orbit || { radius: 7, speed: 0.15, phase: 0, tilt: 0 };
@@ -1169,6 +1176,7 @@ function buildMoons(topic) {
       group,
       body,
       halo,
+      hit,         // wider invisible raycast target
       trail,
       mat,
       orbit,
@@ -1186,6 +1194,7 @@ function disposeMoons() {
     m.body.geometry.dispose(); m.body.material.dispose();
     m.trail.geometry.dispose(); m.trail.material.dispose();
     m.halo.material.map?.dispose(); m.halo.material.dispose();
+    if (m.hit) { try { m.hit.geometry.dispose(); m.hit.material.dispose(); } catch (_) {} }
   }
   state.moonMeshes.length = 0;
 }
@@ -1600,13 +1609,14 @@ function doHoverPickMoons() {
     return;
   }
   state.raycaster.setFromCamera(state.pointer, state.camera);
-  const targets = state.moonMeshes.map(m => m.body);
+  // Use the wider invisible hit-spheres so the moon's full corona is hoverable.
+  const targets = state.moonMeshes.map(m => m.hit || m.body);
   const hits = state.raycaster.intersectObjects(targets, false);
   const tooltip = document.getElementById("tooltip");
 
   if (hits.length > 0) {
-    const body = hits[0].object;
-    const rec = state.moonMeshes.find(m => m.body === body);
+    const hitObj = hits[0].object;
+    const rec = state.moonMeshes.find(m => m.hit === hitObj || m.body === hitObj);
     if (!rec) return;
     if (rec.id !== state.hoveredMoon) {
       state.hoveredMoon = rec.id;
@@ -2619,17 +2629,20 @@ function entryToReadable(entry, kind) {
   return "";
 }
 
-function startSpeech(text, btn) {
+function startSpeech(text, btn, opts = {}) {
   stopSpeech();
-  // start listen tracking — derive entry id from the surrounding entry
+  // Self-correct: if EL is configured but engine somehow drifted to browser
+  // (e.g., race during boot when elVoices populated late), force it back.
+  if (TTS.elKey && getSelectedElVoiceId() && TTS.engine !== "elevenlabs") {
+    console.log("[TTS] auto-correcting engine to 'elevenlabs'");
+    TTS.engine = "elevenlabs";
+  }
+  // listen tracking
   const entry = currentEntry();
   const kind = btn?.dataset?.ttsSource || (btn?.dataset?.ttsDoc !== undefined ? "document" : btn?.dataset?.ttsCard !== undefined ? "card" : "other");
   if (entry) listenStart(entry.id, kind, text);
-  if (TTS.engine === "elevenlabs") {
-    startSpeechElevenLabs(text, btn);
-  } else {
-    startSpeechBrowser(text, btn);
-  }
+  // Narration is ElevenLabs-only (Lily). No browser-voice fallback.
+  startSpeechElevenLabs(text, btn, opts);
 }
 
 function startSpeechBrowser(text, btn) {
@@ -2657,15 +2670,18 @@ function startSpeechBrowser(text, btn) {
   playNextChunk();
 }
 
-async function startSpeechElevenLabs(text, btn) {
-  // Lily / ElevenLabs ONLY. No browser-voice fallback.
+async function startSpeechElevenLabs(text, btn, opts = {}) {
+  const isManual = !!opts.manual;
   const voiceId = getSelectedElVoiceId();
+  console.log("[TTS-EL] starting", { isManual, hasKey: !!TTS.elKey, voiceId, exhausted: TTS._elQuotaExhausted, textLen: text?.length });
+
   if (!voiceId || !TTS.elKey) {
-    // not configured — silent. (Settings is where the user connects.)
+    if (isManual) toast("Connect ElevenLabs in Settings to enable narration");
     return;
   }
-  if (TTS._elQuotaExhausted) {
-    // already informed the user; subsequent attempts are silent until reload
+  // Auto-narration with known quota exhaustion: silent.
+  // Manual clicks BYPASS the flag — maybe it's transient, give it a shot.
+  if (TTS._elQuotaExhausted && !isManual) {
     return;
   }
 
@@ -2678,12 +2694,11 @@ async function startSpeechElevenLabs(text, btn) {
   const speechToken = ++TTS._token;
 
   try {
-    // 1. cache hit? play instantly, no API call
     let blob = await getCachedTTS(cacheKey);
     if (speechToken !== TTS._token || !TTS.playing) return;
     let fromCache = !!blob;
+    console.log("[TTS-EL] cache", fromCache ? "HIT" : "MISS", cacheKey.slice(0, 40));
 
-    // 2. cache miss → fetch from ElevenLabs in full, then cache
     if (!blob) {
       if (btn) {
         const label = btn.querySelector(".tts-label");
@@ -2692,10 +2707,16 @@ async function startSpeechElevenLabs(text, btn) {
       TTS.pendingAbort = new AbortController();
       blob = await elFetchFullAudio(text, voiceId, TTS.pendingAbort.signal);
       if (speechToken !== TTS._token || !TTS.playing) return;
+      console.log("[TTS-EL] fetched", blob.size, "bytes");
       saveCachedTTS(cacheKey, blob).catch(() => {});
+      // Successful manual fetch clears any stale quota flag
+      if (isManual && TTS._elQuotaExhausted) {
+        TTS._elQuotaExhausted = false;
+        TTS._quotaToastShown = false;
+        console.log("[TTS-EL] quota flag cleared (manual succeeded)");
+      }
     }
 
-    // 3. play
     const url = URL.createObjectURL(blob);
     TTS.audioParts = [url];
     TTS.audioPartIndex = 0;
@@ -2704,15 +2725,18 @@ async function startSpeechElevenLabs(text, btn) {
     playElevenPart(0);
     if (!fromCache) refreshElQuota();
   } catch (err) {
+    console.warn("[TTS-EL] error:", err.message || err);
     restoreBtnLabel(btn);
     if (isElQuotaError(err)) {
       TTS._elQuotaExhausted = true;
-      if (!TTS._quotaToastShown) {
+      // Manual clicks always get a toast. Auto-narration only the first time.
+      if (isManual || !TTS._quotaToastShown) {
         TTS._quotaToastShown = true;
-        toast("ElevenLabs quota exceeded — narration paused. Top up at elevenlabs.io to continue.");
+        toast("ElevenLabs quota exceeded — narration paused. Top up at elevenlabs.io.");
       }
     } else if (err.name !== "AbortError") {
-      toast(`audio: ${err.message?.slice(0, 80) || "request failed"}`);
+      // network / unknown errors: always toast (manual or not)
+      toast(`audio: ${err.message?.slice(0, 100) || "request failed"}`);
     }
     stopSpeech();
   }
@@ -2816,8 +2840,11 @@ function playElevenPart(index) {
   a.addEventListener("error", () => {
     if (TTS.playing) playElevenPart(index + 1);
   });
-  a.play().catch(err => {
-    console.warn("Audio play failed:", err);
+  a.play().then(() => {
+    console.log("[TTS-EL] playback started");
+  }).catch(err => {
+    console.warn("[TTS-EL] audio.play() rejected:", err.message || err);
+    toast(`playback blocked — click the page to allow audio`);
     if (TTS.playing) playElevenPart(index + 1);
   });
 }
@@ -3117,10 +3144,13 @@ function handleTTSButtonClick(btn, textProvider) {
     if (TTS.paused) { resumeSpeech(); return; }
     if (TTS.playing) { pauseSpeech(); return; }
   }
-  // either a fresh start, or a switch to a different entry — stop any prior speech first
   const text = textProvider();
-  if (!text) return;
-  startSpeech(text, btn);
+  if (!text) {
+    console.warn("[TTS] textProvider returned empty — entry may be unloaded");
+    return;
+  }
+  // Manual clicks always toast on failure and bypass any quota-skip flag.
+  startSpeech(text, btn, { manual: true });
 }
 
 function setupSettingsPanel() {
