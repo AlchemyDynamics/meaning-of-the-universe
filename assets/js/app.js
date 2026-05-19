@@ -1297,7 +1297,7 @@ function cardFor(entry) {
       if (f && f.length >= 20 && f.length <= 200) facts.push(f);
     }
   }
-  // seeAlso: connections for top-level; sibling moons + parent for moons; synthesis parents for insight stars
+  // seeAlso: connections for top-level; sibling moons + parent for moons
   let seeAlso = [];
   if (entry.parentId) {
     const parent = topicById(entry.parentId);
@@ -1318,8 +1318,9 @@ function cardFor(entry) {
   return {
     punchline: entry.conclusion || entry.summary || "",
     propositions: propositions.slice(0, 5),
-    hypotheses: [],   // seed topics don't carry hypotheses by default
+    hypotheses: [],
     facts: facts.slice(0, 3),
+    openQuestions: [],   // seed topics don't carry these by default; rebuild adds them
     seeAlso,
   };
 }
@@ -1369,6 +1370,25 @@ function renderCard(entry) {
     factsWrap.hidden = true;
   }
 
+  // Open Questions — each one a clickable doorway. Click opens The Librarian
+  // with the question pre-filled, so the user can immediately explore it.
+  const questionsWrap = document.getElementById("cardQuestionsWrap");
+  const questionsUl = document.getElementById("cardQuestions");
+  questionsUl.innerHTML = "";
+  const questions = card.openQuestions || [];
+  if (questions.length > 0) {
+    questionsWrap.hidden = false;
+    for (const q of questions) {
+      const li = document.createElement("li");
+      li.textContent = q;
+      li.title = "click to ask The Librarian";
+      li.addEventListener("click", () => askLibrarianAbout(q));
+      questionsUl.appendChild(li);
+    }
+  } else {
+    questionsWrap.hidden = true;
+  }
+
   const seeAlsoWrap = document.getElementById("cardSeeAlsoWrap");
   const seeAlsoEl = document.getElementById("cardSeeAlso");
   seeAlsoEl.innerHTML = "";
@@ -1409,6 +1429,19 @@ function renderCard(entry) {
   if (stopBtn && !stopBtn._bound) {
     stopBtn.addEventListener("click", () => stopSpeech());
     stopBtn._bound = true;
+  }
+}
+
+/* Open the Librarian with a question pre-filled in the input and ready to send.
+   Used by Open Questions clicks on the card, and could be reused elsewhere. */
+function askLibrarianAbout(question) {
+  if (!question) return;
+  openGuide();
+  const input = document.getElementById("guideInput");
+  if (input) {
+    input.value = question;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
   }
 }
 
@@ -4591,6 +4624,12 @@ Reply ONLY with valid JSON in this exact shape — no markdown fences, no prose:
         "2-3 short surprising facts. Specific, named, dated where possible.",
         "Calibrated — not hyperbole, but the kind of fact a smart friend mentions in passing."
       ],
+      "openQuestions": [
+        "3-4 SHORT questions (8-15 words) about what scientists / scholars still don't fully understand in this domain.",
+        "These are the rabbit holes — clickable in the UI, each one a doorway.",
+        "Phrased like a curious friend asking — 'Why do octopus arms have their own neurons?' not 'On the question of peripheral neural decentralization in cephalopods'.",
+        "Mix near-term empirical puzzles and deeper conceptual mysteries."
+      ],
       "seeAlso": [
         {"id": "existing-topic-id", "name": "Topic Name", "why": "one-phrase reason this beckons"},
         {"id": "another-existing-id", "name": "Another", "why": "different angle on the same question"}
@@ -4639,18 +4678,29 @@ The card is what persuades the user to dig deeper. It should feel like the libra
 ═══════════════════════════════════════════════════════════════════
 WRITING LEVEL — important:
 ═══════════════════════════════════════════════════════════════════
-Write for a curious high school sophomore (grade 10). The whole entry — every field, every document, every line — should read this way.
+Write for a curious high-school sophomore (grade 10). The whole entry — every field, every document — should read this way.
 
 - Plain words. Short sentences. Aim for an average of 12-18 words per sentence; mix short punchy ones with longer ones for rhythm.
-- Avoid academic jargon unless you define it inline in plain English the first time you use it. (e.g. "the hard problem of consciousness — the question of why brain activity is accompanied by inner experience at all".) No bare Latin (no "qua", "viz", "inter alia"). Replace "epistemological" with "about how we know things", "putative" with "claimed", "ontological" with "about what really exists".
-- Lead with the striking thing, not the most general. Each paragraph should earn its reader: open with a hook — a surprising fact, an open question, a named person and date, a real-world image.
+- Avoid academic jargon unless you define it inline in plain English the first time. ("Anti-de Sitter space — a kind of curved geometry physicists use as a math sandbox.") No bare Latin. Replace "epistemological" with "about how we know things", "putative" with "claimed", "ontological" with "about what really exists".
 - Concrete > abstract. Name people. Cite dates. Give one concrete example before generalizing.
-- This is NOT "dumbing down" the substance. The research stays real — same names, dates, citation URLs, calibrated claims. The accessibility is in the WORDS, not the rigor.
+- Research stays real — same names, dates, citation URLs, calibrated claims. Accessibility is in the WORDS, not the rigor.
+
+═══════════════════════════════════════════════════════════════════
+TONE — important:
+═══════════════════════════════════════════════════════════════════
+Less philosophy seminar, more curious science explainer. Think Bill Nye if he had a graduate degree — enthusiastic, factual, dialed back from campy. Add a sneaky, mysterious edge so the reader keeps thinking "wait, what?" and clicks deeper.
+
+- Open with a SCENE or a STRIKING FACT, not a definition. "In 1956, Claude Shannon walked into a Bell Labs meeting with a chessboard…" beats "Information theory was founded in 1948 by…"
+- Drop specific numbers, dated events, named experiments. They are the hooks.
+- Tease mysteries you don't fully resolve: "Here's what nobody expected…" "But there's a twist…" "And this is where it gets weird…"
+- Be sneaky: hint that there's more depth than this card can show. Leave doors ajar so the next click feels rewarded.
+- Avoid "the philosophical question of…" "the nature of…" "the discourse around…" — wave those away. Lead with what HAPPENS, what's MEASURED, what's STILL UNKNOWN.
+- "Substantive" and "accessible" are not opposites. Be both.
+
+The library should feel like a friend who keeps saying "wait, you have to hear about this one" — and means it.
 
 LENGTH:
-Brief is better. Documents: 2-3 paragraphs each, 3-5 sentences per paragraph. Don't pad to fill space.
-
-The library's voice should feel like a brilliant friend who explains things clearly because they actually understand them, not because they're showing off vocabulary. Be intriguing. Be specific. Be short.
+Brief is better. Documents: 2-3 paragraphs each, 3-5 sentences per paragraph. Don't pad.
 
 Two documents per entry. Real sources still required.`;
 }

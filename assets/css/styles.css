@@ -661,6 +661,38 @@ em { color: var(--ink-0); font-style: italic; }
   color: var(--gold); font-size: 14px;
 }
 
+/* Open Questions — clickable rabbit holes that open the Librarian with the question pre-filled */
+.card-questions { list-style: none; padding: 0; margin: 0; }
+.card-questions li {
+  font-family: var(--serif); font-style: italic; font-size: 13px; line-height: 1.5;
+  color: var(--ink-1);
+  padding: 6px 10px 6px 22px;
+  position: relative;
+  border: 1px dashed transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 2px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+}
+.card-questions li::before {
+  content: "?"; position: absolute; left: 8px; top: 6px;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--accent);
+  font-style: normal;
+}
+.card-questions li:hover {
+  background: rgba(167,139,250,0.08);
+  border-color: var(--line-2);
+  color: var(--ink-0);
+  transform: translateX(2px);
+}
+.card-questions-hint {
+  font-family: var(--serif); font-style: italic; font-size: 10px;
+  color: var(--ink-3); letter-spacing: 0; text-transform: none;
+  margin-left: 8px;
+  font-weight: 400;
+}
+
 .card-seealso { display: flex; flex-wrap: wrap; gap: 6px; }
 .card-seealso-pill {
   display: inline-flex; align-items: center; gap: 6px;
