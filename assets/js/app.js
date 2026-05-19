@@ -1236,6 +1236,7 @@ function populateMoonHud(moon, parent) {
 
   renderTagButtons(moon.tags || []);
   renderCard(moon);
+  resetDeleteButton();
 }
 
 /* Return the entry's card data, or derive one from existing fields
@@ -1737,6 +1738,7 @@ function populatePlanetHud(topic) {
 
   renderTagButtons(topic.tags || []);
   renderCard(topic);
+  resetDeleteButton();
 }
 
 /* ============================================================
@@ -3725,15 +3727,18 @@ function attachUI() {
   document.getElementById("selectionFuse").addEventListener("click", fireMultiFusion);
   document.getElementById("customTitleBtn").addEventListener("click", () => {
     const v = document.getElementById("customTitleInput").value.trim();
-    if (v) finalizeFusion(v);
+    if (v) commitTitleChoice(v);
   });
   document.getElementById("customTitleInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       const v = e.target.value.trim();
-      if (v) finalizeFusion(v);
+      if (v) commitTitleChoice(v);
     }
   });
+  document.getElementById("titleDeclineBtn").addEventListener("click", declineGeneration);
+  // setup the delete button too
+  setupDeleteEntry();
 
   document.getElementById("btn-collide").addEventListener("click", () => {
     if (state.mode !== "galaxy") {
@@ -4749,19 +4754,74 @@ async function fireCollision(firstId, secondId) {
     return;
   }
 
-  // spawn the new insight star at the midpoint
+  // Don't auto-create — let the learner choose whether to commit, and which title.
+  showCollisionTitleChooser(a, b, result);
+}
+
+function showCollisionTitleChooser(a, b, result) {
+  state.pendingCollision = { a, b, result };
+  state.pendingFusion = null;
+
+  document.getElementById("titleIntro").textContent =
+    `A synthesis from ${a.name} × ${b.name}. Generate a new entry, or decline.`;
+
+  const optsEl = document.getElementById("titleOptions");
+  optsEl.innerHTML = "";
+  const options = (Array.isArray(result.name_options) && result.name_options.length > 0)
+    ? result.name_options.slice(0, 4)
+    : (result.name ? [result.name] : [`${a.name} × ${b.name}`]);
+  for (const name of options) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "title-option-btn";
+    btn.textContent = name;
+    btn.addEventListener("click", () => commitTitleChoice(name));
+    optsEl.appendChild(btn);
+  }
+  document.getElementById("customTitleInput").value = "";
+
+  // preview the synthesis
+  document.getElementById("synthPunchline").textContent = result.summary || "";
+  const propsUl = document.getElementById("synthPropositions");
+  propsUl.innerHTML = "";
+  for (const f of (result.findings || []).slice(0, 4)) {
+    const li = document.createElement("li");
+    li.textContent = f;
+    propsUl.appendChild(li);
+  }
+
+  document.getElementById("modal-titleChooser").hidden = false;
+}
+
+function commitTitleChoice(chosenName) {
+  if (state.pendingCollision) finalizeCollision(chosenName);
+  else if (state.pendingFusion) finalizeFusion(chosenName);
+}
+
+function declineGeneration() {
+  state.pendingCollision = null;
+  state.pendingFusion = null;
+  document.getElementById("modal-titleChooser").hidden = true;
+  toast("declined — no entry generated");
+}
+
+function finalizeCollision(chosenName) {
+  const pending = state.pendingCollision;
+  state.pendingCollision = null;
+  if (!pending) return;
+  const { a, b, result } = pending;
+  document.getElementById("modal-titleChooser").hidden = true;
+
   const midPos = [
     (a.position[0] + b.position[0]) / 2,
-    (a.position[1] + b.position[1]) / 2,
+    (a.position[1] + b.position[1]) / 2 + 0.8,
     (a.position[2] + b.position[2]) / 2,
   ];
-  // gentle nudge so the insight doesn't sit exactly on an existing edge
-  midPos[1] += 0.8;
 
   const insightId = `insight-${a.id}-${b.id}-${Date.now().toString(36)}`;
   const insight = {
     id: insightId,
-    name: result.name || `${a.name} × ${b.name}`,
+    name: chosenName,
     cluster: "metaphysics",
     color: blendColors(a.color, b.color),
     position: midPos,
@@ -4779,7 +4839,7 @@ async function fireCollision(firstId, secondId) {
     documents: result.expansion ? [{
       id: `${insightId}-syn`,
       type: "synthesis",
-      title: `${result.name || "Insight"} — synthesis`,
+      title: `${chosenName} — synthesis`,
       author: `forged from ${a.name} × ${b.name}`,
       summary: result.summary,
       findings: result.findings || [],
@@ -4797,15 +4857,15 @@ async function fireCollision(firstId, secondId) {
   rebuildEdges();
 
   document.getElementById("topicCount").textContent = TOPICS.length;
-  // Pull exploration tags from the synthesis result (preferred) or fall back to
-  // a few of the new entity's tags. The insight is now permanent — only X dismisses.
   const exploreTags = (Array.isArray(result.explore) && result.explore.length > 0)
     ? result.explore.slice(0, 5)
     : (insight.tags || []).filter(t => t && t.length >= 3 && t.length <= 28).slice(0, 5);
-  showInsight(result.name || "insight", result.summary, {
+  showInsight(chosenName, result.summary, {
     permanent: true,
     tags: exploreTags,
   });
+  state.autoNarrateOnArrival = true;
+  setTimeout(() => enterPlanet(insight.id), 900);
 }
 
 function makeProjectile() {
@@ -4877,6 +4937,154 @@ function blendColors(a, b) {
   out.g = Math.min(1, out.g * 1.15);
   out.b = Math.min(1, out.b * 1.15);
   return "#" + out.getHexString();
+}
+
+/* ============================================================
+   Delete entry — remove from library with two-step confirmation
+   ------------------------------------------------------------
+   First click → "are you sure?" pulse. Second click within 6s
+   commits. Confirmation auto-cancels after timeout. Persisted in
+   localStorage motu.deletedTopics / motu.deletedMoons; applied
+   on every boot via applyDeletions before visuals build.
+   ============================================================ */
+function setupDeleteEntry() {
+  const btn = document.getElementById("planetDeleteBtn");
+  if (!btn) return;
+  let confirmTimer = null;
+  btn.addEventListener("click", () => {
+    const entry = currentEntry();
+    if (!entry) return;
+    if (btn.classList.contains("confirming")) {
+      // committed
+      clearTimeout(confirmTimer);
+      btn.classList.remove("confirming");
+      btn.textContent = "delete this entry";
+      deleteEntry(entry);
+    } else {
+      // ask for confirmation
+      btn.classList.add("confirming");
+      btn.textContent = "are you sure? click again to confirm";
+      confirmTimer = setTimeout(() => {
+        btn.classList.remove("confirming");
+        btn.textContent = "delete this entry";
+      }, 6000);
+    }
+  });
+}
+
+/* Reset the delete button's state — called when a new entry is shown. */
+function resetDeleteButton() {
+  const btn = document.getElementById("planetDeleteBtn");
+  if (!btn) return;
+  btn.classList.remove("confirming");
+  btn.textContent = "delete this entry";
+}
+
+function deleteEntry(entry) {
+  persistDeletion(entry);
+
+  if (entry.parentId) {
+    // moon — remove from SUB_TOPICS
+    const arr = SUB_TOPICS[entry.parentId];
+    if (arr) {
+      const idx = arr.findIndex(m => m.id === entry.id);
+      if (idx >= 0) arr.splice(idx, 1);
+    }
+    // also dispose its moon mesh if currently rendered
+    const recIdx = state.moonMeshes.findIndex(m => m.id === entry.id);
+    if (recIdx >= 0) {
+      const rec = state.moonMeshes[recIdx];
+      state.scene.remove(rec.group);
+      state.planetGroup.remove(rec.trail);
+      try { rec.body.geometry.dispose(); rec.body.material.dispose(); } catch (_) {}
+      try { rec.trail.geometry.dispose(); rec.trail.material.dispose(); } catch (_) {}
+      try { rec.halo.material.map?.dispose(); rec.halo.material.dispose(); } catch (_) {}
+      state.moonMeshes.splice(recIdx, 1);
+    }
+  } else {
+    // top-level — remove from TOPICS
+    const idx = TOPICS.findIndex(t => t.id === entry.id);
+    if (idx >= 0) TOPICS.splice(idx, 1);
+    // remove visual
+    const node = state.topicMeshes.get(entry.id);
+    if (node) {
+      state.topicGroup.remove(node);
+      state.topicMeshes.delete(entry.id);
+      if (state.hitTargets) {
+        const hi = state.hitTargets.indexOf(node.userData.hit);
+        if (hi >= 0) state.hitTargets.splice(hi, 1);
+      }
+    }
+    removeStarLabel(entry.id);
+    // remove edges referencing this id
+    for (let i = EDGES.length - 1; i >= 0; i--) {
+      if (EDGES[i][0] === entry.id || EDGES[i][1] === entry.id) EDGES.splice(i, 1);
+    }
+    rebuildEdges();
+    document.getElementById("topicCount").textContent = TOPICS.length;
+  }
+
+  toast(`"${entry.name}" deleted`);
+
+  // Bounce out of the deleted entry
+  if (state.currentMoon?.id === entry.id) {
+    returnToPlanet();
+  } else if (state.currentTopic?.id === entry.id) {
+    returnToGalaxy();
+  }
+}
+
+function persistDeletion(entry) {
+  try {
+    const key = entry.parentId ? "motu.deletedMoons" : "motu.deletedTopics";
+    const arr = JSON.parse(localStorage.getItem(key) || "[]");
+    if (!arr.includes(entry.id)) arr.push(entry.id);
+    localStorage.setItem(key, JSON.stringify(arr));
+
+    // Also clean up: remove from user-generated lists if present
+    const userKey = entry.parentId ? "motu.userMoons" : "motu.userTopics";
+    const userArr = JSON.parse(localStorage.getItem(userKey) || "[]");
+    const filteredUserArr = userArr.filter(t => t.id !== entry.id);
+    if (filteredUserArr.length !== userArr.length) {
+      localStorage.setItem(userKey, JSON.stringify(filteredUserArr));
+    }
+
+    // Remove any per-entry override
+    localStorage.removeItem(`motu.override.${entry.id}`);
+
+    // Remove edges from userEdges
+    const edges = JSON.parse(localStorage.getItem("motu.userEdges") || "[]");
+    const filteredEdges = edges.filter(([a, b]) => a !== entry.id && b !== entry.id);
+    if (filteredEdges.length !== edges.length) {
+      localStorage.setItem("motu.userEdges", JSON.stringify(filteredEdges));
+    }
+  } catch (e) { handleQuotaError(e); }
+}
+
+/* Apply deletions to in-memory data BEFORE buildTopicNodes runs. */
+function applyDeletions() {
+  let deletedTopics = new Set();
+  let deletedMoons = new Set();
+  try {
+    deletedTopics = new Set(JSON.parse(localStorage.getItem("motu.deletedTopics") || "[]"));
+    deletedMoons  = new Set(JSON.parse(localStorage.getItem("motu.deletedMoons")  || "[]"));
+  } catch (e) {}
+  // Filter top-level
+  for (let i = TOPICS.length - 1; i >= 0; i--) {
+    if (deletedTopics.has(TOPICS[i].id)) TOPICS.splice(i, 1);
+  }
+  // Filter moons
+  for (const parentId of Object.keys(SUB_TOPICS)) {
+    const arr = SUB_TOPICS[parentId];
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (deletedMoons.has(arr[i].id)) arr.splice(i, 1);
+    }
+  }
+  // Filter edges referencing any deleted topic
+  for (let i = EDGES.length - 1; i >= 0; i--) {
+    const [a, b] = EDGES[i];
+    if (deletedTopics.has(a) || deletedTopics.has(b)) EDGES.splice(i, 1);
+  }
 }
 
 /* ============================================================
@@ -5144,7 +5352,7 @@ function showTitleChooser(topics, fusion) {
     btn.type = "button";
     btn.className = "title-option-btn";
     btn.textContent = name;
-    btn.addEventListener("click", () => finalizeFusion(name));
+    btn.addEventListener("click", () => commitTitleChoice(name));
     optsEl.appendChild(btn);
   }
   document.getElementById("customTitleInput").value = "";
@@ -5249,7 +5457,7 @@ Write a short, poetic synthesis (2-3 sentences) that captures the genuine insigh
 
 Reply ONLY with valid JSON, no fences:
 {
-  "name": "Short Title",
+  "name_options": ["3-4 candidate titles for the synthesis, 1-4 words each, ranging from descriptive to poetic"],
   "summary": "2-3 sentence poetic synthesis. The spoken kind.",
   "expansion": "One paragraph that develops the insight in more substantive language.",
   "findings": ["one short insight", "another short insight"],
@@ -5328,6 +5536,7 @@ function loadPersistedEntities() {
   } catch (e) { /* corrupted localStorage — non-fatal */ }
   loadPersistedEdges();
   loadOverrides();
+  applyDeletions();   // hide deleted entries before any visual builds
 }
 
 async function callClaude(userText) {
