@@ -790,6 +790,44 @@ em { color: var(--ink-0); font-style: italic; }
 }
 
 /* ============================================================
+   Surface mode — immersive procedural world
+   ============================================================ */
+.hud-surface { pointer-events: none; }
+.hud-surface > * { pointer-events: auto; }
+.surface-overlay {
+  position: absolute;
+  top: 24px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  max-width: min(640px, 88vw);
+  text-align: center;
+  padding: 18px 28px;
+  background: linear-gradient(180deg, rgba(8,8,22,0.55), rgba(8,8,22,0.0));
+  backdrop-filter: blur(6px);
+  border-radius: 0 0 18px 18px;
+  pointer-events: none;
+  animation: fadeIn 1.2s ease 0.4s both;
+}
+.surface-eyebrow {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--accent);
+  margin-bottom: 10px;
+}
+.surface-title {
+  font-family: var(--serif); font-weight: 300;
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.05;
+  color: var(--ink-0);
+  margin-bottom: 10px;
+}
+.surface-summary {
+  font-family: var(--serif); font-style: italic;
+  font-size: clamp(14px, 1.5vw, 18px);
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+
+/* ============================================================
    Modals
    ============================================================ */
 .modal {

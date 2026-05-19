@@ -30,7 +30,7 @@ const state = {
   raycaster: new THREE.Raycaster(),
   pointer: new THREE.Vector2(-2, -2),
   hovered: null,            // topic id
-  mode: "galaxy",           // "galaxy" | "transit" | "planet" | "moon"
+  mode: "galaxy",           // "galaxy" | "transit" | "planet" | "moon" | "surface"
   currentTopic: null,       // topic object when in planet mode
   currentMoon: null,        // moon object when in moon mode
   topicMeshes: new Map(),   // id -> mesh
@@ -460,9 +460,20 @@ function onPointerClick(e) {
       // clicking empty space when there's a selection: clear it
       clearStarSelection();
     }
-  } else if (state.mode === "planet" && state.hoveredMoon) {
-    const rec = state.moonMeshes.find(m => m.id === state.hoveredMoon);
-    if (rec) enterMoon(rec);
+  } else if (state.mode === "planet") {
+    if (state.hoveredMoon) {
+      const rec = state.moonMeshes.find(m => m.id === state.hoveredMoon);
+      if (rec) enterMoon(rec);
+      return;
+    }
+    // No moon under cursor — check if the user clicked the planet itself
+    state.raycaster.setFromCamera(state.pointer, state.camera);
+    if (state.planetMesh && state.planetGroup.visible) {
+      const hits = state.raycaster.intersectObject(state.planetMesh, false);
+      if (hits.length > 0) {
+        openSurfaceConfirmation();
+      }
+    }
   }
 }
 
@@ -1108,6 +1119,189 @@ function setPlanetTheme(topic) {
 }
 
 /* ============================================================
+   Surface mode — immersive procedural world per topic
+   ------------------------------------------------------------
+   Click the planet → confirmation → camera flythrough → enter
+   a giant inverted sphere using the topic's existing shader, so
+   the user is "inside" the world the planet represents. Theme-
+   colored particle atmosphere. Topic info overlay. Free-look
+   rotation. Return button.
+   PHASE 2 hook: replace the procedural inverted-sphere with a
+   panorama from a world-model API (Replicate / Decart / etc.)
+   when the user wires one up in Settings.
+   ============================================================ */
+
+function openSurfaceConfirmation() {
+  const entry = currentEntry();
+  if (!entry) return;
+  document.getElementById("surfaceConfirmName").textContent = entry.name;
+  document.getElementById("modal-surface-confirm").hidden = false;
+}
+
+function setupSurfaceMode() {
+  document.getElementById("surfaceAccept").addEventListener("click", () => {
+    document.getElementById("modal-surface-confirm").hidden = true;
+    enterSurface();
+  });
+  document.getElementById("surfaceDecline").addEventListener("click", () => {
+    document.getElementById("modal-surface-confirm").hidden = true;
+  });
+  document.getElementById("btn-surface-return").addEventListener("click", exitSurface);
+}
+
+function enterSurface() {
+  const entry = currentEntry();
+  if (!entry) return;
+  stopSpeech();   // halt the orbit-view narration
+
+  // remember camera pose so we can restore it on return
+  state.savedCamSurface = {
+    pos: state.camera.position.clone(),
+    target: state.controls.target.clone(),
+  };
+
+  // Build the surface scene (or refresh it for this topic)
+  buildSurfaceScene(entry);
+
+  // Hide planet HUD / moons; show surface HUD
+  document.getElementById("hud-planet").hidden = true;
+  document.getElementById("hud-surface").hidden = false;
+  populateSurfaceOverlay(entry);
+  state.topicGroup.visible = false;
+  state.planetGroup.visible = false;
+  state.edgeLines.visible = false;
+  for (const m of state.moonMeshes) m.group.visible = false;
+
+  // Camera flies into the planet — from current pose to origin (inside surface sphere)
+  const target = new THREE.Vector3(0, 0, 0.001);   // tiny offset so OrbitControls doesn't NaN
+  state.cameraTargetPos = target;
+  state.cameraTargetLook = new THREE.Vector3(2, 0.4, -1).normalize().multiplyScalar(8); // look outward
+  state.mode = "transit";
+  state.afterTransit = "surface";
+  state.controls.minDistance = 0.01;
+  state.controls.maxDistance = 30;
+}
+
+function exitSurface() {
+  stopSpeech();
+  // Tear down the surface scene
+  disposeSurfaceScene();
+  document.getElementById("hud-surface").hidden = true;
+  document.getElementById("hud-planet").hidden = false;
+  state.planetGroup.visible = true;
+  state.topicGroup.visible = false;   // still in planet mode, galaxy stays hidden
+  for (const m of state.moonMeshes) m.group.visible = true;
+
+  // Restore camera to orbit-of-planet pose
+  const dir = new THREE.Vector3(1, 0.3, 1.6).normalize();
+  state.cameraTargetPos = dir.multiplyScalar(12.1);
+  state.cameraTargetLook = new THREE.Vector3(0, 0, 0);
+  state.mode = "transit";
+  state.afterTransit = "planet";
+  state.controls.minDistance = 6;
+  state.controls.maxDistance = 22;
+}
+
+function onArriveAtSurface() {
+  // Free-look mode: camera orbits at a small fixed distance from origin,
+  // so dragging rotates the view across the inverted surface dome.
+  state.controls.enableZoom = false;
+  state.controls.enablePan = false;
+  state.controls.minDistance = 0.5;
+  state.controls.maxDistance = 0.5;
+  state.controls.rotateSpeed = 0.3;
+  state.controls.target.set(0, 0, 0);
+  state.camera.position.set(0, 0, 0.5);
+  state.controls.update();
+}
+
+function populateSurfaceOverlay(entry) {
+  document.getElementById("surfaceOverlayCluster").textContent =
+    "surface · " + (entry.cluster || (entry.parentId ? "moon" : ""));
+  document.getElementById("surfaceOverlayTitle").textContent = entry.name;
+  document.getElementById("surfaceOverlaySummary").textContent =
+    entry.summary || entry.conclusion || "";
+}
+
+function buildSurfaceScene(entry) {
+  disposeSurfaceScene();
+  const group = new THREE.Group();
+
+  // Giant inverted sphere using the topic's planet shader — the inside of the world.
+  const theme = entry.planetTheme || { type: "crystal", params: {} };
+  const geo = new THREE.SphereGeometry(45, 96, 96);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: planetVertex,
+    fragmentShader: planetFragment,
+    side: THREE.BackSide,
+    uniforms: {
+      uTime:   { value: 0 },
+      uTheme:  { value: THEME_INDEX[theme.type] ?? 0 },
+      uHue:    { value: theme.params?.hue ?? 0.7 },
+      uAccent: { value: theme.params?.accent ?? 0.95 },
+      uParamA: {
+        value: theme.params?.bands ?? theme.params?.complexity
+            ?? theme.params?.density ?? theme.params?.facets
+            ?? theme.params?.turbulence ?? theme.params?.glitch
+            ?? theme.params?.structure ?? 6.0,
+      },
+    },
+  });
+  const dome = new THREE.Mesh(geo, mat);
+  group.add(dome);
+
+  // Atmospheric particle field — drifts gently around the camera.
+  const N = 1200;
+  const positions = new Float32Array(N * 3);
+  const colors = new Float32Array(N * 3);
+  const baseColor = new THREE.Color(entry.color || "#a78bfa");
+  for (let i = 0; i < N; i++) {
+    const r = 3 + Math.random() * 25;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    positions[3*i]   = r * Math.sin(phi) * Math.cos(theta);
+    positions[3*i+1] = r * Math.sin(phi) * Math.sin(theta);
+    positions[3*i+2] = r * Math.cos(phi);
+    const tint = 0.7 + Math.random() * 0.3;
+    colors[3*i]   = baseColor.r * tint;
+    colors[3*i+1] = baseColor.g * tint;
+    colors[3*i+2] = baseColor.b * tint;
+  }
+  const particleGeo = new THREE.BufferGeometry();
+  particleGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  particleGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  const particleMat = new THREE.PointsMaterial({
+    size: 0.25, sizeAttenuation: true,
+    transparent: true, opacity: 0.7,
+    vertexColors: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const particles = new THREE.Points(particleGeo, particleMat);
+  group.add(particles);
+
+  state.surfaceGroup = group;
+  state.surfaceMaterial = mat;
+  state.surfaceParticles = particles;
+  state.scene.add(group);
+}
+
+function disposeSurfaceScene() {
+  if (!state.surfaceGroup) return;
+  state.scene.remove(state.surfaceGroup);
+  state.surfaceGroup.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (obj.material.map) obj.material.map.dispose();
+      obj.material.dispose();
+    }
+  });
+  state.surfaceGroup = null;
+  state.surfaceMaterial = null;
+  state.surfaceParticles = null;
+}
+
+/* ============================================================
    Moons (sub-topics) — built when entering a planet
    ============================================================ */
 function buildMoons(topic) {
@@ -1580,6 +1774,16 @@ function startLoop() {
       updateMoonPositions(t);
     }
 
+    // surface scene — animate shader + drift particles
+    if (state.surfaceGroup) {
+      if (state.surfaceMaterial) state.surfaceMaterial.uniforms.uTime.value = t;
+      state.surfaceGroup.rotation.y += dt * 0.012;
+      if (state.surfaceParticles) {
+        state.surfaceParticles.rotation.y -= dt * 0.018;
+        state.surfaceParticles.rotation.x = Math.sin(t * 0.05) * 0.05;
+      }
+    }
+
     // camera transit
     if (state.mode === "transit" && state.cameraTargetPos) {
       state.camera.position.lerp(state.cameraTargetPos, 0.06);
@@ -1592,6 +1796,7 @@ function startLoop() {
         if (state.afterTransit === "planet") { state.mode = "planet"; onArriveAtPlanet(); }
         else if (state.afterTransit === "galaxy") { state.mode = "galaxy"; onArriveAtGalaxy(); }
         else if (state.afterTransit === "moon") { state.mode = "moon"; onArriveAtMoon(); }
+        else if (state.afterTransit === "surface") { state.mode = "surface"; onArriveAtSurface(); }
       }
     }
 
@@ -3876,6 +4081,9 @@ function factsFor(topic) {
 function attachUI() {
   // Inline rename: click the planet title to edit. Enter or blur commits; Esc cancels.
   setupTitleRename();
+
+  // Surface mode — click planet to descend
+  setupSurfaceMode();
 
   document.getElementById("btn-return-galaxy").addEventListener("click", () => {
     // dynamic: in moon → planet; in planet → galaxy
