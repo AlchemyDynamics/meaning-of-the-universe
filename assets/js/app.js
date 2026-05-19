@@ -4626,7 +4626,7 @@ CRITICAL — SOURCES:
 Every entity AND every document MUST include a "sources" array of real URLs. Use the papers provided in the user message AND any additional sources you find via web_search. Each source is { "label": "...", "url": "https://..." } where label is a short human-readable citation (Author Year — Title, or Encyclopedia entry, or Lecture/Talk title). URLs must be real, working, and direct — prefer arXiv abstract pages, journal/PubMed pages with open-access PDF, Stanford Encyclopedia of Philosophy entries, IEP entries, university course pages, established institutional publications. Avoid Wikipedia as a primary source (it can be one entry but not the only one). 3-6 sources per document, 4-8 at the topic level. Do not invent URLs — only use URLs from the provided papers or from your web_search results.
 
 CRITICAL — INDEX CARD (the "card" field, the user's primary view):
-The card is the user's main interface to this topic — what they see when they land on the planet. Treat it as notes on a 3x5 index card written by a brilliant generalist. Maximum delivery, minimum filler.
+The card is the user's main interface to this topic — what they see when they land on the planet. Treat it as notes on a 3x5 index card written by a brilliant older sibling explaining the subject at the dinner table. Maximum delivery, minimum filler.
 
 - "punchline" — ONE sharp sentence that captures the topic's essential bite. Should lodge in memory.
 - "propositions" — 4-5 declarative claims. Each load-bearing. Compressed. Specific. NOT a summary of the conclusion; each is its own dense thought.
@@ -4636,7 +4636,23 @@ The card is the user's main interface to this topic — what they see when they 
 
 The card is what persuades the user to dig deeper. It should feel like the library OFFERING ITSELF — there is more behind every line, and the see-also pills are doors.
 
-Make the documents substantive, intellectually serious, calibrated. Match the library's tone: distillation-focused, neither breathless nor dismissive. Two documents. 3-4 paragraphs each in prose. But the CARD is the load-bearing user surface.`;
+═══════════════════════════════════════════════════════════════════
+WRITING LEVEL — important:
+═══════════════════════════════════════════════════════════════════
+Write for a curious high school sophomore (grade 10). The whole entry — every field, every document, every line — should read this way.
+
+- Plain words. Short sentences. Aim for an average of 12-18 words per sentence; mix short punchy ones with longer ones for rhythm.
+- Avoid academic jargon unless you define it inline in plain English the first time you use it. (e.g. "the hard problem of consciousness — the question of why brain activity is accompanied by inner experience at all".) No bare Latin (no "qua", "viz", "inter alia"). Replace "epistemological" with "about how we know things", "putative" with "claimed", "ontological" with "about what really exists".
+- Lead with the striking thing, not the most general. Each paragraph should earn its reader: open with a hook — a surprising fact, an open question, a named person and date, a real-world image.
+- Concrete > abstract. Name people. Cite dates. Give one concrete example before generalizing.
+- This is NOT "dumbing down" the substance. The research stays real — same names, dates, citation URLs, calibrated claims. The accessibility is in the WORDS, not the rigor.
+
+LENGTH:
+Brief is better. Documents: 2-3 paragraphs each, 3-5 sentences per paragraph. Don't pad to fill space.
+
+The library's voice should feel like a brilliant friend who explains things clearly because they actually understand them, not because they're showing off vocabulary. Be intriguing. Be specific. Be short.
+
+Two documents per entry. Real sources still required.`;
 }
 
 /* Pre-fetch papers from Semantic Scholar to ground Opus's generation in real sources. */
@@ -5435,8 +5451,10 @@ async function generateFusion(topics) {
     topics.map((t, i) => `${i+1}. ${t.name}\n   summary: ${t.summary}\n   conclusion: ${t.conclusion}`).join("\n\n"),
     `Write the synthesis as a brand-new top-level entry. The new entry should:
 - Find the genuine intellectual intersection of ALL ${topics.length} parents
-- Open new territory at the meeting point — not be a summary, sum, or recap
-- Match the library's tone: distillation-focused, calibrated, neither breathless nor dismissive`,
+- Open new territory at the meeting point — not a summary, sum, or recap
+- Be intellectually serious AND accessible
+
+WRITING LEVEL: Write for a curious high school sophomore (grade 10). Plain words. Short sentences (avg 12-18 words). Avoid jargon — when you must use a technical term, define it inline in plain English. Lead with concrete examples and named people/dates, not abstract definitions. Keep the research rigor (real names, dates, sources) but make the prose itself an easy read. Brief is better — documents should be 2-3 paragraphs each, no padding.`,
   ];
   const listenCtx = listenContextForPrompt();
   if (listenCtx) parts.push(listenCtx);
@@ -5601,7 +5619,9 @@ B: ${b.name}
   ${b.summary}
   conclusion: ${b.conclusion}
 
-Write a short, poetic synthesis (2-3 sentences) that captures the genuine insight where these meet — not a sum of the parts, the spark between them. Then provide a 1-4 word title for the synthesis, and a longer expansion (one paragraph) that develops the idea further.
+WRITING LEVEL: Write for a curious high school sophomore. Plain language. Short sentences. No jargon you don't immediately define. Lead with the concrete, not the abstract. Be intriguing — open with a hook, not a definition.
+
+Write a short synthesis (2-3 sentences) that captures the genuine insight where these meet — not a sum of the parts, the spark between them. Provide 3-4 candidate title options (1-4 words each). The expansion paragraph develops the idea further but stays HS-readable.
 
 Reply ONLY with valid JSON, no fences:
 {
