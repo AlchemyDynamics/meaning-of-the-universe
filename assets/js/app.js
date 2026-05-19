@@ -1182,6 +1182,7 @@ function updateMoonPositions(t) {
    Moon mode — selecting a moon focuses on it
    ============================================================ */
 function enterMoon(moonRecord) {
+  stopSpeech();   // halt any narration from the previous entry
   const m = moonRecord;
   m.paused = true;
   state.currentMoon = m.sub;
@@ -1206,6 +1207,7 @@ function enterMoon(moonRecord) {
 }
 
 function returnToPlanet() {
+  stopSpeech();
   // unfocus moon; resume orbits
   for (const m of state.moonMeshes) {
     m.paused = false;
@@ -1635,6 +1637,7 @@ function doHoverPick() {
    Mode transitions
    ============================================================ */
 function enterPlanet(id) {
+  stopSpeech();   // halt any narration from the previous entry
   const topic = topicById(id);
   if (!topic) return;
 
@@ -1679,21 +1682,19 @@ function enterPlanet(id) {
 }
 
 function onArriveAtPlanet() {
-  // When the user lands on a freshly-generated star, auto-narrate the card.
-  // The flag is set by generation / fusion flows just before they call enterPlanet.
-  if (state.autoNarrateOnArrival && state.currentTopic) {
-    state.autoNarrateOnArrival = false;
-    setTimeout(() => {
-      // safety: only narrate if we're still on the planet view and not already speaking
-      if (state.mode !== "planet" || TTS.playing) return;
-      const text = cardReadAloud(state.currentTopic);
-      const btn = document.querySelector("[data-tts-card]");
-      startSpeech(text, btn);
-    }, 700);  // brief settling beat after the camera arrives
-  }
+  // Auto-narrate the card every time we arrive at a planet.
+  // Cached audio plays instantly on second+ visits; first visit fetches once.
+  if (!state.currentTopic) return;
+  setTimeout(() => {
+    if (state.mode !== "planet" || TTS.playing) return;
+    const text = cardReadAloud(state.currentTopic);
+    const btn = document.querySelector("[data-tts-card]");
+    startSpeech(text, btn);
+  }, 700);
 }
 
 function returnToGalaxy() {
+  stopSpeech();
   disposeMoons();
   state.planetGroup.visible = false;
   state.cameraTargetPos = state.savedCam.pos.clone();
@@ -1714,16 +1715,14 @@ function returnToGalaxy() {
 function onArriveAtGalaxy() { /* hook */ }
 
 function onArriveAtMoon() {
-  // Same auto-narration as new stars, scoped to moons.
-  if (state.autoNarrateOnArrival && state.currentMoon) {
-    state.autoNarrateOnArrival = false;
-    setTimeout(() => {
-      if (state.mode !== "moon" || TTS.playing) return;
-      const text = cardReadAloud(state.currentMoon);
-      const btn = document.querySelector("[data-tts-card]");
-      startSpeech(text, btn);
-    }, 700);
-  }
+  // Auto-narrate every moon arrival, same as planets.
+  if (!state.currentMoon) return;
+  setTimeout(() => {
+    if (state.mode !== "moon" || TTS.playing) return;
+    const text = cardReadAloud(state.currentMoon);
+    const btn = document.querySelector("[data-tts-card]");
+    startSpeech(text, btn);
+  }, 700);
 }
 
 /* ============================================================
@@ -2259,6 +2258,59 @@ function listenContextForPrompt() {
 }
 
 /* ============================================================
+   TTS audio cache (IndexedDB)
+   ------------------------------------------------------------
+   Per-entry narration is fetched once from ElevenLabs and stored
+   as a Blob keyed by (voice, model, hash-of-text). On reload of
+   the same entry with the same voice + content, we hit cache and
+   play back instantly. If the entry's content changes (rename,
+   regenerate, content edit), the hash differs → cache miss →
+   fresh fetch. Old cache lingers harmlessly until cleared.
+   ============================================================ */
+const TTS_DB_NAME = "motu-tts";
+const TTS_DB_STORE = "audio";
+
+function openTTSDB() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) { reject(new Error("IndexedDB unavailable")); return; }
+    const req = indexedDB.open(TTS_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(TTS_DB_STORE)) {
+        db.createObjectStore(TTS_DB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function getCachedTTS(key) {
+  try {
+    const db = await openTTSDB();
+    const tx = db.transaction(TTS_DB_STORE, "readonly");
+    const store = tx.objectStore(TTS_DB_STORE);
+    return await new Promise((res) => {
+      const r = store.get(key);
+      r.onsuccess = () => res(r.result || null);
+      r.onerror = () => res(null);
+    });
+  } catch (e) { return null; }
+}
+async function saveCachedTTS(key, blob) {
+  try {
+    const db = await openTTSDB();
+    const tx = db.transaction(TTS_DB_STORE, "readwrite");
+    tx.objectStore(TTS_DB_STORE).put(blob, key);
+    await new Promise(r => tx.oncomplete = r);
+  } catch (e) {}
+}
+function simpleHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/* ============================================================
    Text-to-speech
    ------------------------------------------------------------
    Uses the browser's Web Speech API — no API key required.
@@ -2288,9 +2340,10 @@ const TTS = {
   currentBtn: null,
   // elevenlabs audio playback
   audio: null,               // HTMLAudioElement currently playing
-  audioParts: [],            // queued blob URLs when chunking
+  audioParts: [],            // queued blob URLs (now always 0 or 1, kept for compat)
   audioPartIndex: 0,
   pendingAbort: null,        // AbortController for in-flight fetch
+  _token: 0,                 // race-protection for cache-aware async fetches
 };
 
 function initTTS() {
@@ -2576,61 +2629,73 @@ function startSpeechBrowser(text, btn) {
 
 async function startSpeechElevenLabs(text, btn) {
   const voiceId = getSelectedElVoiceId();
-  if (!voiceId) {
-    toast("Pick an ElevenLabs voice in Settings first");
-    return;
-  }
-  if (!TTS.elKey) {
-    toast("Connect ElevenLabs first");
-    return;
-  }
+  if (!voiceId) { toast("Pick an ElevenLabs voice in Settings first"); return; }
+  if (!TTS.elKey) { toast("Connect ElevenLabs first"); return; }
+
   TTS.playing = true;
   TTS.paused = false;
   TTS.currentBtn = btn;
   if (btn) { btn.classList.add("playing"); showStopFor(btn); }
-  // visual cue while we fetch
-  if (btn) {
-    const label = btn.querySelector(".tts-label");
-    if (label) { label._original = label.textContent; label.textContent = "generating…"; }
-  }
-  // chunk to keep first-byte latency low and stay under ElevenLabs's per-request char limit
-  const chunks = chunkForSpeechEL(text);
-  TTS.audioParts = new Array(chunks.length).fill(null);
-  TTS.audioPartIndex = 0;
-  TTS.pendingAbort = new AbortController();
+
+  const cacheKey = `${voiceId}:${TTS.elModel}:${simpleHash(text)}`;
+  const speechToken = ++TTS._token;   // race-protection: drop stale resolutions
+
   try {
-    // Fire first request; play once it arrives. Pre-fetch subsequent in background.
-    TTS.audioParts[0] = await elFetchAudio(chunks[0], voiceId, TTS.pendingAbort.signal);
+    // 1. cache hit?
+    let blob = await getCachedTTS(cacheKey);
+    if (speechToken !== TTS._token || !TTS.playing) return;
+    let fromCache = !!blob;
+
+    // 2. cache miss → fetch full audio in one request (then cache it)
+    if (!blob) {
+      if (btn) {
+        const label = btn.querySelector(".tts-label");
+        if (label && !label._original) { label._original = label.textContent; label.textContent = "generating…"; }
+      }
+      TTS.pendingAbort = new AbortController();
+      blob = await elFetchFullAudio(text, voiceId, TTS.pendingAbort.signal);
+      if (speechToken !== TTS._token || !TTS.playing) return;
+      // cache asynchronously — failure is non-fatal
+      saveCachedTTS(cacheKey, blob).catch(() => {});
+    }
+
+    // 3. play
+    const url = URL.createObjectURL(blob);
+    TTS.audioParts = [url];
+    TTS.audioPartIndex = 0;
     restoreBtnLabel(btn);
     setBtnLabel(btn, "pause");
     playElevenPart(0);
-    // prefetch the rest serially (avoid hammering free-tier rate limits).
-    // Carefully revoke any URL that arrives AFTER the user stopped — otherwise
-    // those blobs leak forever (stopSpeech ran before we set TTS.audioParts[i]).
-    for (let i = 1; i < chunks.length; i++) {
-      if (!TTS.playing) break;
-      let url;
-      try {
-        url = await elFetchAudio(chunks[i], voiceId, TTS.pendingAbort.signal);
-      } catch (e) {
-        break;
-      }
-      if (!TTS.playing) {
-        // stopped during the await — release the blob and bail
-        try { URL.revokeObjectURL(url); } catch (_) {}
-        break;
-      }
-      TTS.audioParts[i] = url;
-    }
-    // refresh quota in background
-    refreshElQuota();
+    if (!fromCache) refreshElQuota();   // only refresh quota when we actually spent it
   } catch (err) {
     restoreBtnLabel(btn);
     if (err.name !== "AbortError") {
-      toast(`ElevenLabs: ${err.message?.slice(0, 80) || "request failed"}`);
+      toast(`audio: ${err.message?.slice(0, 80) || "request failed"}`);
     }
     stopSpeech();
   }
+}
+
+async function elFetchFullAudio(text, voiceId, signal) {
+  const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: "POST",
+    headers: {
+      "xi-api-key": TTS.elKey,
+      "Content-Type": "application/json",
+      "Accept": "audio/mpeg",
+    },
+    body: JSON.stringify({
+      text,
+      model_id: TTS.elModel,
+      voice_settings: { stability: 0.45, similarity_boost: 0.78, style: 0.0, use_speaker_boost: true },
+    }),
+    signal,
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`API ${resp.status}: ${txt.slice(0, 200)}`);
+  }
+  return await resp.blob();
 }
 
 function restoreBtnLabel(btn) {
