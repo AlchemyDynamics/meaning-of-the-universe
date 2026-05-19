@@ -3575,11 +3575,8 @@ async function setupMusic() {
     const exp = document.getElementById("musicExpand");
     exp.hidden = !exp.hidden;
   });
-  document.getElementById("musicPlay").addEventListener("click", musicTogglePlay);
-  document.getElementById("musicDockPause").addEventListener("click", (e) => {
-    e.stopPropagation();
-    musicTogglePlay();
-  });
+  document.getElementById("musicPlay").addEventListener("click", musicPlay);
+  document.getElementById("musicPause").addEventListener("click", musicPause);
   document.getElementById("musicPrev").addEventListener("click", () => switchTrack(-1));
   document.getElementById("musicNext").addEventListener("click", () => switchTrack(+1));
   document.getElementById("musicCompose").addEventListener("click", composeMusic);
@@ -3717,7 +3714,7 @@ async function composeMusic() {
   }
 }
 
-function musicTogglePlay() {
+function musicPlay() {
   if (!MUSIC.audio) {
     if (MUSIC.library.length > 0) { pickRandomTrack(true); }
     else { toast("compose a loop first (+)"); }
@@ -3725,13 +3722,19 @@ function musicTogglePlay() {
   }
   if (MUSIC.audio.paused) {
     MUSIC.audio.play().catch(() => {});
-    setMusicPlayIcon(false);
-    document.getElementById("musicMini").classList.add("playing");
-  } else {
-    MUSIC.audio.pause();
-    setMusicPlayIcon(true);
-    document.getElementById("musicMini").classList.remove("playing");
   }
+  setMusicPlayIcon(false);
+  document.getElementById("musicMini").classList.add("playing");
+}
+function musicPause() {
+  if (!MUSIC.audio || MUSIC.audio.paused) return;
+  MUSIC.audio.pause();
+  setMusicPlayIcon(true);
+  document.getElementById("musicMini").classList.remove("playing");
+}
+function musicTogglePlay() {
+  if (MUSIC.audio && !MUSIC.audio.paused) musicPause();
+  else musicPlay();
 }
 
 function renderTrackList() {
@@ -3767,23 +3770,12 @@ function renderTrackList() {
 }
 
 function setMusicPlayIcon(paused) {
-  const targets = [
-    document.querySelector("#musicPlay .music-icon-play"),
-    document.querySelector("#musicPlay .music-icon-pause"),
-    document.querySelector("#musicDockPause .music-icon-play"),
-    document.querySelector("#musicDockPause .music-icon-pause"),
-  ];
-  if (targets.some(t => !t)) return;
-  const [playInExpand, pauseInExpand, playOnDock, pauseOnDock] = targets;
-  if (paused) {
-    playInExpand.hidden = false; pauseInExpand.hidden = true;
-    playOnDock.hidden = false;   pauseOnDock.hidden = true;
-  } else {
-    playInExpand.hidden = true;  pauseInExpand.hidden = false;
-    playOnDock.hidden = true;    pauseOnDock.hidden = false;
-  }
-  const dockBtn = document.getElementById("musicDockPause");
-  if (dockBtn) dockBtn.classList.toggle("paused", !!paused);
+  const playBtn  = document.getElementById("musicPlay");
+  const pauseBtn = document.getElementById("musicPause");
+  if (!playBtn || !pauseBtn) return;
+  // The button matching the *current* state lights up; the other dims.
+  playBtn.classList.toggle("active", !paused);
+  pauseBtn.classList.toggle("active", !!paused);
 }
 function setMusicTrackName(name) {
   const el = document.getElementById("musicTrackName");
