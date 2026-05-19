@@ -103,15 +103,18 @@ window.addEventListener("DOMContentLoaded", () => {
 function setupBootBegin() {
   const boot = document.getElementById("boot");
   if (!boot) return;
+  // Ensure the paused state is set (in case the HTML was served cached without it)
   boot.classList.add("before-begin");
-
-  const overlay = document.createElement("div");
-  overlay.className = "boot-begin-overlay";
-  overlay.innerHTML = `
-    <button class="boot-begin-btn" id="bootBeginBtn">begin</button>
-    <span class="boot-begin-hint">tap to enter with sound</span>
-  `;
-  boot.appendChild(overlay);
+  // The overlay is in the static HTML — find it (or create a fallback if absent)
+  let overlay = document.getElementById("bootBeginOverlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.className = "boot-begin-overlay";
+    overlay.id = "bootBeginOverlay";
+    overlay.innerHTML = `<button class="boot-begin-btn" id="bootBeginBtn">begin</button><span class="boot-begin-hint">tap to enter with sound</span>`;
+    boot.appendChild(overlay);
+  }
+  const beginBtn = document.getElementById("bootBeginBtn");
 
   let begun = false;
   const beginBoot = () => {
@@ -127,12 +130,10 @@ function setupBootBegin() {
     overlay.remove();
     boot.classList.remove("before-begin");
 
-    // Now everything starts in sync:
-    playBootChakraTones();      // 8-note scale, in time with chakras
-    scheduleBootDismiss();      // 5s opening, 7.5s fade, 9s remove
-    startBootCameraRush();      // camera flies in from far during the boot
+    playBootChakraTones();
+    scheduleBootDismiss();
+    startBootCameraRush();
 
-    // First-run hint, scheduled relative to begin
     if (!state.guideKey && !localStorage.getItem("motu.firstRunHinted")) {
       setTimeout(() => {
         if (state.mode === "galaxy") {
@@ -150,7 +151,9 @@ function setupBootBegin() {
       beginBoot();
     }
   };
-  document.getElementById("bootBeginBtn").addEventListener("click", beginBoot);
+  if (beginBtn) beginBtn.addEventListener("click", beginBoot);
+  // Also accept any click on the overlay container (button is small)
+  overlay.addEventListener("click", beginBoot);
   window.addEventListener("keydown", keyBegin);
 }
 
@@ -2655,14 +2658,15 @@ function startSpeechBrowser(text, btn) {
 }
 
 async function startSpeechElevenLabs(text, btn) {
-  // If we've already learned the EL quota is gone this session, skip directly to browser TTS
-  if (TTS._elQuotaExhausted) {
-    return startSpeechBrowser(text, btn);
-  }
+  // Lily / ElevenLabs ONLY. No browser-voice fallback.
   const voiceId = getSelectedElVoiceId();
   if (!voiceId || !TTS.elKey) {
-    // no EL configured at all — quietly use the browser engine
-    return startSpeechBrowser(text, btn);
+    // not configured — silent. (Settings is where the user connects.)
+    return;
+  }
+  if (TTS._elQuotaExhausted) {
+    // already informed the user; subsequent attempts are silent until reload
+    return;
   }
 
   TTS.playing = true;
@@ -2674,12 +2678,12 @@ async function startSpeechElevenLabs(text, btn) {
   const speechToken = ++TTS._token;
 
   try {
-    // 1. cache hit?
+    // 1. cache hit? play instantly, no API call
     let blob = await getCachedTTS(cacheKey);
     if (speechToken !== TTS._token || !TTS.playing) return;
     let fromCache = !!blob;
 
-    // 2. cache miss → fetch full audio
+    // 2. cache miss → fetch from ElevenLabs in full, then cache
     if (!blob) {
       if (btn) {
         const label = btn.querySelector(".tts-label");
@@ -2701,34 +2705,28 @@ async function startSpeechElevenLabs(text, btn) {
     if (!fromCache) refreshElQuota();
   } catch (err) {
     restoreBtnLabel(btn);
-    // Quota / auth failure → flip to browser voice for the rest of the session.
-    // Cached entries still play in Lily; uncached entries get the browser fallback.
     if (isElQuotaError(err)) {
       TTS._elQuotaExhausted = true;
-      stopSpeech();    // reset state cleanly
       if (!TTS._quotaToastShown) {
         TTS._quotaToastShown = true;
-        toast("ElevenLabs quota reached — using browser voice. Cached entries still play in Lily.");
+        toast("ElevenLabs quota exceeded — narration paused. Top up at elevenlabs.io to continue.");
       }
-      // play this entry on the browser engine
-      return startSpeechBrowser(text, btn);
-    }
-    if (err.name !== "AbortError") {
+    } else if (err.name !== "AbortError") {
       toast(`audio: ${err.message?.slice(0, 80) || "request failed"}`);
     }
     stopSpeech();
   }
 }
 
-/* Detect any ElevenLabs error that means "you can't keep using this key right now". */
+/* Detect ElevenLabs errors that are permanent for the session (quota / auth /
+   subscription) — these stop further auto-attempts. Rate-limit (429) is
+   transient so we don't flag-permanent on it. */
 function isElQuotaError(err) {
   const msg = String(err?.message || "").toLowerCase();
   return msg.includes("quota") ||
-         msg.includes("rate limit") ||
-         msg.includes("rate-limit") ||
          msg.includes("subscription") ||
          msg.includes("payment") ||
-         /api\s*(401|402|403|429)/.test(msg);
+         /api\s*40[1-3]/.test(msg);
 }
 
 async function elFetchFullAudio(text, voiceId, signal) {

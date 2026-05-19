@@ -6,15 +6,15 @@
 <title>The Meaning of the Universe — A 3D Research Library</title>
 <meta name="description" content="A galactic 3D research library exploring Simulation Theory, Plasma Dynamics, World Religions, Economics, Esoterica, Astrophysics, Cosmology, and Computation — with an AI Guide." />
 <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg" />
-<link rel="stylesheet" href="assets/css/styles.css" />
+<link rel="stylesheet" href="assets/css/styles.css?v=20260519a" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
 </head>
 <body>
 
-  <!-- Boot / chakra ascent -->
-  <div id="boot" class="boot">
+  <!-- Boot / chakra ascent — `before-begin` keeps every animation paused from first paint -->
+  <div id="boot" class="boot before-begin">
     <div class="boot-chakra-stage">
       <svg class="boot-chakra-svg" viewBox="0 0 200 600" preserveAspectRatio="xMidYMid meet">
         <defs>
@@ -99,6 +99,10 @@
       <h1 class="boot-title">The Meaning of the Universe</h1>
       <p class="boot-sub">A 3D library of cutting-edge inquiry</p>
       <p class="boot-status" id="bootStatus">awakening the starfield…</p>
+    </div>
+    <div class="boot-begin-overlay" id="bootBeginOverlay">
+      <button class="boot-begin-btn" id="bootBeginBtn">begin</button>
+      <span class="boot-begin-hint">tap to enter with sound</span>
     </div>
   </div>
 
@@ -584,7 +588,7 @@
     }
   }
   </script>
-  <script type="module" src="assets/js/app.js"></script>
+  <script type="module" src="assets/js/app.js?v=20260519a"></script>
 
 </body>
 </html>
