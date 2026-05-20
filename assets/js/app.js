@@ -4313,7 +4313,7 @@ function setupDraggable(panel, handle, storageKey) {
     const inHandle = inExplicitHandle(e.target);
     const onEdge = nearEdge(rect, e);
     if (!inHandle && !onEdge) return;          // interior → don't drag
-    if (!inHandle && isInteractive(e.target)) return; // edge but on a button → let it click
+    if (isInteractive(e.target)) return;       // button / input anywhere → let it click, never drag
     dragging = true;
     pid = e.pointerId;
     panel.setPointerCapture(pid);
