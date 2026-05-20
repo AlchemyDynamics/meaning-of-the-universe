@@ -3611,8 +3611,9 @@ function attemptAutoplay() {
     // Autoplay blocked — wait for first user gesture
     setMusicHint("click anywhere to start the loop");
     const start = () => {
-      if (!MUSIC.audio) return;
+      if (!MUSIC.audio || MUSIC.userPaused) return;
       MUSIC.audio.play().then(() => {
+        if (MUSIC.userPaused) { MUSIC.audio.pause(); return; }
         document.getElementById("musicMini").classList.add("playing");
         setMusicPlayIcon(false);
         setMusicHint("");
@@ -3648,12 +3649,15 @@ function loadTrack(idx, playImmediately) {
   MUSIC.audio.volume = MUSIC.volume;
   setMusicTrackName(track.name);
   renderTrackList();
-  if (playImmediately) {
+  if (playImmediately && !MUSIC.userPaused) {
+    MUSIC.audio.muted = false;
     MUSIC.audio.play().then(() => {
       document.getElementById("musicMini").classList.add("playing");
       setMusicPlayIcon(false);
       setMusicHint("");
     }).catch(() => setMusicHint("click anywhere to start"));
+  } else if (MUSIC.userPaused) {
+    setMusicPlayIcon(true);
   }
 }
 
@@ -3715,11 +3719,13 @@ async function composeMusic() {
 }
 
 function musicPlay() {
+  MUSIC.userPaused = false;
   if (!MUSIC.audio) {
     if (MUSIC.library.length > 0) { pickRandomTrack(true); }
     else { toast("compose a loop first (+)"); }
     return;
   }
+  MUSIC.audio.muted = false;
   if (MUSIC.audio.paused) {
     MUSIC.audio.play().catch(() => {});
   }
@@ -3727,8 +3733,12 @@ function musicPlay() {
   document.getElementById("musicMini").classList.add("playing");
 }
 function musicPause() {
-  if (!MUSIC.audio || MUSIC.audio.paused) return;
-  MUSIC.audio.pause();
+  MUSIC.userPaused = true;
+  if (!MUSIC.audio) { setMusicPlayIcon(true); return; }
+  // Mute first (guaranteed silence), then pause. If anything races to resume,
+  // playback continues silently and the next play click unmutes.
+  try { MUSIC.audio.muted = true; } catch (_) {}
+  try { MUSIC.audio.pause(); } catch (_) {}
   setMusicPlayIcon(true);
   document.getElementById("musicMini").classList.remove("playing");
 }
