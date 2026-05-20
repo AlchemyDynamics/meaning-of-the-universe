@@ -3049,7 +3049,7 @@ async function elFetchAudio(text, voiceId, signal) {
 function playElevenPart(index) {
   if (!TTS.playing) return;
   if (index >= TTS.audioParts.length) {
-    stopSpeech();
+    stopSpeech({ natural: true });
     return;
   }
   const url = TTS.audioParts[index];
@@ -3114,7 +3114,12 @@ function playNextChunk() {
   speechSynthesis.speak(u);
 }
 
-function stopSpeech() {
+function stopSpeech(opts = {}) {
+  // Capture the natural-end callback BEFORE clearing; fire it after cleanup
+  // only if this stop was due to natural completion (not user interruption).
+  const naturalCb = opts.natural ? TTS.onComplete : null;
+  TTS.onComplete = null;
+
   if (LISTEN.current) listenEnd();
   TTS.playing = false;
   TTS.paused = false;
@@ -3132,11 +3137,12 @@ function stopSpeech() {
     TTS.currentBtn.classList.remove("paused");
     setBtnLabel(TTS.currentBtn, "listen");
     restoreBtnLabel(TTS.currentBtn);
-    // hide the stop pill near this button
     const sibling = TTS.currentBtn.parentElement?.querySelector("[data-tts-stop]");
     if (sibling) sibling.hidden = true;
   }
   TTS.currentBtn = null;
+
+  if (naturalCb) { try { naturalCb(); } catch (_) {} }
 }
 
 function pauseSpeech() {
@@ -4436,19 +4442,31 @@ async function sendGuide(text, opts = {}) {
   state.guideHistory.push({ role: "user", content: text });
   persistGuideHistory();
 
+  // After the reply is spoken, if voice mode is on, re-open the mic
+  // so the conversation continues without a click.
+  const continueVoiceTurn = () => {
+    if (VOICE.voiceMode && !VOICE.listening) {
+      setTimeout(() => startListening(), 300);
+    }
+  };
+  const speak = (msg) => {
+    if (opts.speakReply) speakLibrarianReply(msg, continueVoiceTurn);
+    else continueVoiceTurn();
+  };
+
   // try simple intent first — "take me to X"
   const navMatch = matchNavIntent(text);
   if (navMatch) {
     const tip = `Taking you to ${navMatch.name}. ${navMatch.summary}`;
     addGuideMessage("bot", tip, { navId: navMatch.id, navName: navMatch.name });
-    if (opts.speakReply) speakLibrarianReply(tip);
+    speak(tip);
     return;
   }
 
   if (!state.guideKey) {
     const msg = "I need a Claude API key to answer freely. Paste one above — it stays in this browser only. Or ask me to take you to a specific topic and I'll navigate without an API.";
     addGuideMessage("bot", msg);
-    if (opts.speakReply) speakLibrarianReply(msg);
+    speak(msg);
     return;
   }
 
@@ -4460,24 +4478,26 @@ async function sendGuide(text, opts = {}) {
     addGuideMessage("bot", reply, navTopic ? { navId: navTopic.id, navName: navTopic.name } : {});
     state.guideHistory.push({ role: "assistant", content: reply });
     persistGuideHistory();
-    if (opts.speakReply) speakLibrarianReply(reply);
+    speak(reply);
   } catch (err) {
     typingEl.remove();
     const errMsg = `the line went quiet. ${err.message || "unknown error"}`;
     addGuideMessage("bot", errMsg);
-    if (opts.speakReply) speakLibrarianReply(errMsg);
+    speak(errMsg);
   }
 }
 
-/* Strip the [[navigate:id]] markers and any markdown before speaking. */
-function speakLibrarianReply(text) {
+/* Strip the [[navigate:id]] markers and any markdown before speaking.
+   onEnd fires only when the reply finishes naturally (not when interrupted). */
+function speakLibrarianReply(text, onEnd) {
   const clean = text
     .replace(/\[\[navigate:[a-z0-9-]+\]\]/gi, "")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
     .trim();
-  if (!clean) return;
-  startSpeech(clean, null);  // no button highlight — TTS just plays
+  if (!clean) { if (onEnd) onEnd(); return; }
+  TTS.onComplete = onEnd || null;
+  startSpeech(clean, null);
 }
 
 /* ============================================================
@@ -4487,6 +4507,7 @@ function speakLibrarianReply(text) {
 const VOICE = {
   recognition: null,
   listening: false,
+  voiceMode: localStorage.getItem("motu.voiceMode") === "1",
 };
 
 function setupLibrarianVoice() {
@@ -4533,29 +4554,56 @@ function setupLibrarianVoice() {
       const text = input.value.trim();
       if (text) {
         input.value = "";
-        // mark this turn as voice so the response is spoken back
         sendGuide(text, { speakReply: true });
+      } else if (VOICE.voiceMode) {
+        // Silence in continuous voice mode — keep listening for the next turn
+        setTimeout(() => startListening(), 250);
       }
     }
   };
 
   btn.addEventListener("click", () => {
     if (VOICE.listening) {
-      VOICE.recognition.stop();   // triggers onend
+      VOICE.recognition.stop();
       return;
     }
-    openGuide();
-    stopSpeech();                  // don't talk over the user
-    try {
-      VOICE.recognition.start();
-      VOICE.listening = true;
-      btn.classList.add("listening");
-      input.value = "";
-      input.placeholder = "listening…";
-    } catch (e) {
-      console.warn("[STT] start failed", e);
-    }
+    startListening();
   });
+
+  // Voice mode toggle — continuous back-and-forth conversation
+  const vmBtn = document.getElementById("guideVoiceMode");
+  if (vmBtn) {
+    if (VOICE.voiceMode) vmBtn.classList.add("active");
+    vmBtn.addEventListener("click", () => {
+      VOICE.voiceMode = !VOICE.voiceMode;
+      localStorage.setItem("motu.voiceMode", VOICE.voiceMode ? "1" : "");
+      vmBtn.classList.toggle("active", VOICE.voiceMode);
+      if (VOICE.voiceMode) {
+        toast("voice mode on — I'll listen after each reply");
+        openGuide();
+        startListening();
+      } else {
+        toast("voice mode off");
+        if (VOICE.listening) VOICE.recognition.stop();
+      }
+    });
+  }
+}
+
+function startListening() {
+  if (VOICE.listening || !VOICE.recognition) return;
+  openGuide();
+  stopSpeech();                    // don't talk over the user
+  try {
+    VOICE.recognition.start();
+    VOICE.listening = true;
+    const btn = document.getElementById("guideMic");
+    const input = document.getElementById("guideInput");
+    if (btn) btn.classList.add("listening");
+    if (input) { input.value = ""; input.placeholder = "listening…"; }
+  } catch (e) {
+    console.warn("[STT] start failed", e);
+  }
 }
 
 function stopListening() {
@@ -5999,9 +6047,12 @@ async function callClaude(userText) {
   const turns = state.guideHistory.slice(-10).filter(m => m.role !== "system");
   const messages = [...turns];
 
+  // Conversational chat uses Haiku — fast, cheap, and good enough for the
+  // 2-5 sentence replies the Librarian prefers. Heavier tasks (topic
+  // generation, rebuild-this-entry, fusion) still use Opus.
   const body = {
-    model: "claude-opus-4-7",
-    max_tokens: 800,
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 500,
     system: buildGuideSystem() + "\n\n" + context,
     messages: messages,
   };

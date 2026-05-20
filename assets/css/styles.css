@@ -1131,6 +1131,12 @@ em { color: var(--ink-0); font-style: italic; }
   50%      { box-shadow: 0 0 0 8px rgba(251,113,133,0); }
 }
 .guide-mic.unavailable { opacity: 0.35; cursor: not-allowed; }
+.guide-voice-mode.active {
+  background: rgba(167,139,250,0.32);
+  border-color: var(--accent);
+  color: var(--ink-0);
+  box-shadow: 0 0 14px rgba(167,139,250,0.45);
+}
 
 /* ============================================================
    TTS — listen button + states
