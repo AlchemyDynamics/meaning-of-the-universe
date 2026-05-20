@@ -111,10 +111,9 @@ function setupBootBegin() {
     overlay = document.createElement("div");
     overlay.className = "boot-begin-overlay";
     overlay.id = "bootBeginOverlay";
-    overlay.innerHTML = `<button class="boot-begin-btn" id="bootBeginBtn">begin</button><span class="boot-begin-hint">tap to enter with sound</span>`;
+    overlay.innerHTML = `<div class="boot-begin-prompt">click anywhere to begin</div><span class="boot-begin-hint">enters with sound</span>`;
     boot.appendChild(overlay);
   }
-  const beginBtn = document.getElementById("bootBeginBtn");
 
   let begun = false;
   const beginBoot = () => {
@@ -151,8 +150,7 @@ function setupBootBegin() {
       beginBoot();
     }
   };
-  if (beginBtn) beginBtn.addEventListener("click", beginBoot);
-  // Also accept any click on the overlay container (button is small)
+  // Click anywhere on the full-screen overlay → begin
   overlay.addEventListener("click", beginBoot);
   window.addEventListener("keydown", keyBegin);
 }
