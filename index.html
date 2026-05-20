@@ -6,7 +6,7 @@
 <title>The Meaning of the Universe — A 3D Research Library</title>
 <meta name="description" content="A galactic 3D research library exploring Simulation Theory, Plasma Dynamics, World Religions, Economics, Esoterica, Astrophysics, Cosmology, and Computation — with an AI Guide." />
 <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg" />
-<link rel="stylesheet" href="assets/css/styles.css?v=20260520a" />
+<link rel="stylesheet" href="assets/css/styles.css?v=20260520b" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
@@ -591,11 +591,9 @@
         <button class="music-btn-icon" id="musicPrev" title="Previous track">
           <svg viewBox="0 0 24 24" width="11" height="11"><path d="M6 6v12M19 5l-9 7 9 7z" fill="currentColor"/></svg>
         </button>
-        <button class="music-btn-icon music-play" id="musicPlay" title="Play">
-          <svg viewBox="0 0 24 24" width="12" height="12"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
-        </button>
-        <button class="music-btn-icon music-pause" id="musicPause" title="Pause">
-          <svg viewBox="0 0 24 24" width="12" height="12"><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>
+        <button class="music-btn-icon music-play" id="musicPlay" title="Play / Pause">
+          <svg class="music-icon-play"  viewBox="0 0 24 24" width="12" height="12" hidden><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+          <svg class="music-icon-pause" viewBox="0 0 24 24" width="12" height="12"><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>
         </button>
         <button class="music-btn-icon" id="musicNext" title="Next track">
           <svg viewBox="0 0 24 24" width="11" height="11"><path d="M18 6v12M5 5l9 7-9 7z" fill="currentColor"/></svg>
@@ -627,7 +625,7 @@
     }
   }
   </script>
-  <script type="module" src="assets/js/app.js?v=20260520a"></script>
+  <script type="module" src="assets/js/app.js?v=20260520b"></script>
 
 </body>
 </html>

@@ -3575,8 +3575,7 @@ async function setupMusic() {
     const exp = document.getElementById("musicExpand");
     exp.hidden = !exp.hidden;
   });
-  document.getElementById("musicPlay").addEventListener("click", musicPlay);
-  document.getElementById("musicPause").addEventListener("click", musicPause);
+  document.getElementById("musicPlay").addEventListener("click", musicTogglePlay);
   document.getElementById("musicPrev").addEventListener("click", () => switchTrack(-1));
   document.getElementById("musicNext").addEventListener("click", () => switchTrack(+1));
   document.getElementById("musicCompose").addEventListener("click", composeMusic);
@@ -3721,8 +3720,13 @@ async function composeMusic() {
 function musicPlay() {
   MUSIC.userPaused = false;
   if (!MUSIC.audio) {
-    if (MUSIC.library.length > 0) { pickRandomTrack(true); }
-    else { toast("compose a loop first (+)"); }
+    // No live audio element (either never created, or torn down by pause).
+    // Recreate from the last-known track index; if none, pick at random.
+    if (MUSIC.library.length === 0) { toast("compose a loop first (+)"); return; }
+    const idx = (MUSIC.currentIdx >= 0 && MUSIC.currentIdx < MUSIC.library.length)
+      ? MUSIC.currentIdx
+      : Math.floor(Math.random() * MUSIC.library.length);
+    loadTrack(idx, true);
     return;
   }
   MUSIC.audio.muted = false;
@@ -3733,12 +3737,16 @@ function musicPlay() {
   document.getElementById("musicMini").classList.add("playing");
 }
 function musicPause() {
+  // Nuclear pause: tear down the audio element entirely so no buffered
+  // playback or racing .play() promise can keep producing sound.
   MUSIC.userPaused = true;
-  if (!MUSIC.audio) { setMusicPlayIcon(true); return; }
-  // Mute first (guaranteed silence), then pause. If anything races to resume,
-  // playback continues silently and the next play click unmutes.
-  try { MUSIC.audio.muted = true; } catch (_) {}
-  try { MUSIC.audio.pause(); } catch (_) {}
+  if (MUSIC.audio) {
+    try { MUSIC.audio.pause(); } catch (_) {}
+    try { MUSIC.audio.muted = true; } catch (_) {}
+    try { MUSIC.audio.src = ""; } catch (_) {}
+    try { MUSIC.audio.load(); } catch (_) {}
+    MUSIC.audio = null;
+  }
   setMusicPlayIcon(true);
   document.getElementById("musicMini").classList.remove("playing");
 }
@@ -3780,12 +3788,13 @@ function renderTrackList() {
 }
 
 function setMusicPlayIcon(paused) {
-  const playBtn  = document.getElementById("musicPlay");
-  const pauseBtn = document.getElementById("musicPause");
-  if (!playBtn || !pauseBtn) return;
-  // The button matching the *current* state lights up; the other dims.
-  playBtn.classList.toggle("active", !paused);
-  pauseBtn.classList.toggle("active", !!paused);
+  // Single toggle button: shows ❚❚ when playing (click to pause),
+  // shows ▶ when paused (click to play).
+  const playI  = document.querySelector("#musicPlay .music-icon-play");
+  const pauseI = document.querySelector("#musicPlay .music-icon-pause");
+  if (!playI || !pauseI) return;
+  if (paused) { playI.hidden = false; pauseI.hidden = true; }
+  else        { playI.hidden = true;  pauseI.hidden = false; }
 }
 function setMusicTrackName(name) {
   const el = document.getElementById("musicTrackName");
