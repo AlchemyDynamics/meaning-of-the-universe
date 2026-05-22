@@ -458,13 +458,17 @@ function onPointerClick(e) {
       // clicking empty space when there's a selection: clear it
       clearStarSelection();
     }
-  } else if (state.mode === "planet") {
+  } else if (state.mode === "planet" || state.mode === "moon") {
     if (state.hoveredMoon) {
+      // Ignore clicking the moon you're already viewing.
+      if (state.mode === "moon" && state.hoveredMoon === state.currentMoon?.id) return;
       const rec = state.moonMeshes.find(m => m.id === state.hoveredMoon);
       if (rec) enterMoon(rec);
       return;
     }
-    // No moon under cursor — check if the user clicked the planet itself
+    // No moon under cursor — in planet mode, clicking the planet itself
+    // descends to the surface; in moon mode this is a no-op.
+    if (state.mode !== "planet") return;
     state.raycaster.setFromCamera(state.pointer, state.camera);
     if (state.planetMesh && state.planetGroup.visible) {
       const hits = state.raycaster.intersectObject(state.planetMesh, false);
@@ -1362,6 +1366,18 @@ function buildMoons(topic) {
     state.planetGroup.add(trail);
 
     state.scene.add(group);
+
+    // Hover label — hidden until the moon is hovered (or selected sibling).
+    const labelHost = document.getElementById("moonLabels");
+    let label = null;
+    if (labelHost) {
+      label = document.createElement("div");
+      label.className = "moon-label";
+      const cssColor = "#" + new THREE.Color(color).getHexString();
+      label.innerHTML = `<span class="moon-label-dot" style="background:${cssColor};color:${cssColor}"></span>${escapeHtml(sub.name)}`;
+      labelHost.appendChild(label);
+    }
+
     state.moonMeshes.push({
       id: sub.id,
       sub,
@@ -1375,6 +1391,7 @@ function buildMoons(topic) {
       paused: false,
       size,
       color,
+      label,
     });
   }
 }
@@ -1387,6 +1404,7 @@ function disposeMoons() {
     m.trail.geometry.dispose(); m.trail.material.dispose();
     m.halo.material.map?.dispose(); m.halo.material.dispose();
     if (m.hit) { try { m.hit.geometry.dispose(); m.hit.material.dispose(); } catch (_) {} }
+    if (m.label) { try { m.label.remove(); } catch (_) {} }
   }
   state.moonMeshes.length = 0;
 }
@@ -1800,11 +1818,36 @@ function startLoop() {
 
     // project star labels to screen each frame (cheap with ~20 labels)
     if (state.starLabels && state.starLabels.size > 0) updateStarLabels();
+    if (state.moonMeshes.length > 0) updateMoonLabels();
 
     state.controls.update();
     state.composer.render();
   }
   frame();
+}
+
+const _moonLabelV = new THREE.Vector3();
+function updateMoonLabels() {
+  const showAny = (state.mode === "planet" || state.mode === "moon");
+  if (!showAny) {
+    for (const m of state.moonMeshes) if (m.label) m.label.classList.remove("visible");
+    return;
+  }
+  const w = window.innerWidth, h = window.innerHeight;
+  const currentMoonId = state.currentMoon?.id || null;
+  for (const m of state.moonMeshes) {
+    if (!m.label) continue;
+    // Show on hover OR for the currently-focused moon (so you always know where you are)
+    const shouldShow = (state.hoveredMoon === m.id) || (currentMoonId === m.id);
+    if (!shouldShow) { m.label.classList.remove("visible"); continue; }
+    m.group.getWorldPosition(_moonLabelV);
+    _moonLabelV.project(state.camera);
+    if (_moonLabelV.z > 1) { m.label.classList.remove("visible"); continue; }
+    const x = (_moonLabelV.x * 0.5 + 0.5) * w;
+    const y = (-_moonLabelV.y * 0.5 + 0.5) * h;
+    m.label.style.transform = `translate(calc(-50% + ${x}px), calc(-22px + ${y}px))`;
+    m.label.classList.add("visible");
+  }
 }
 
 const _labelV = new THREE.Vector3();

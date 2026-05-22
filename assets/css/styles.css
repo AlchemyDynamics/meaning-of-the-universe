@@ -370,6 +370,38 @@ em { color: var(--ink-0); font-style: italic; }
 }
 .star-label.hidden { display: none; }
 
+/* Moon labels — same projection trick as stars, but only shown on hover
+   so the orbital ring doesn't get cluttered when several moons cross. */
+.moon-labels {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 8;
+  overflow: hidden;
+}
+.moon-label {
+  position: absolute;
+  left: 0; top: 0;
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  background: rgba(8, 8, 22, 0.62);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: 0.08em; text-transform: lowercase;
+  color: var(--ink-1);
+  white-space: nowrap;
+  transform-origin: 0 0;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  user-select: none;
+}
+.moon-label.visible { opacity: 0.96; }
+.moon-label .moon-label-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  box-shadow: 0 0 5px currentColor;
+}
+
 /* ============================================================
    Multi-star selection HUD
    ============================================================ */
