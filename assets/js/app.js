@@ -3000,6 +3000,7 @@ async function startSpeechElevenLabs(text, btn, opts = {}) {
   TTS.paused = false;
   TTS.currentBtn = btn;
   if (btn) { btn.classList.add("playing"); showStopFor(btn); }
+  refreshGuidePauseUI();
 
   const cacheKey = `${voiceId}:${TTS.elModel}:${simpleHash(text)}`;
   const speechToken = ++TTS._token;
@@ -3216,6 +3217,7 @@ function stopSpeech(opts = {}) {
     if (sibling) sibling.hidden = true;
   }
   TTS.currentBtn = null;
+  refreshGuidePauseUI();
 
   if (naturalCb) { try { naturalCb(); } catch (_) {} }
 }
@@ -3233,6 +3235,7 @@ function pauseSpeech() {
     TTS.currentBtn.classList.add("paused");
     setBtnLabel(TTS.currentBtn, "resume");
   }
+  refreshGuidePauseUI();
 }
 
 function resumeSpeech() {
@@ -3248,6 +3251,7 @@ function resumeSpeech() {
     TTS.currentBtn.classList.add("playing");
     setBtnLabel(TTS.currentBtn, "pause");
   }
+  refreshGuidePauseUI();
 }
 
 function setBtnLabel(btn, txt) {
@@ -4299,6 +4303,10 @@ function attachUI() {
   setupLibrarianVoice();
   document.getElementById("guide-toggle").addEventListener("click", openGuide);
   document.getElementById("guide-close").addEventListener("click", closeGuide);
+  document.getElementById("guidePause").addEventListener("click", () => {
+    if (TTS.paused) resumeSpeech();
+    else pauseSpeech();
+  });
   document.getElementById("guideForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const input = document.getElementById("guideInput");
@@ -4461,6 +4469,22 @@ function openGuide() {
 function closeGuide() {
   document.getElementById("guide").hidden = true;
   document.getElementById("guide-toggle").classList.remove("hidden");
+  // The Librarian's own speech (currentBtn === null) should never keep
+  // talking after the window closes. Other narrations (with their own
+  // listen button) are unrelated and left alone.
+  if (TTS.playing && !TTS.currentBtn) stopSpeech();
+}
+
+/* Show the pause/resume button only while The Librarian is actively
+   speaking. Her speech path is the only one that calls startSpeech
+   with no button, so `TTS.playing && !TTS.currentBtn` is the signal. */
+function refreshGuidePauseUI() {
+  const btn = document.getElementById("guidePause");
+  if (!btn) return;
+  const active = TTS.playing && !TTS.currentBtn;
+  btn.hidden = !active;
+  btn.classList.toggle("paused", !!TTS.paused);
+  btn.title = TTS.paused ? "Resume" : "Pause";
 }
 function updateGuideContext(label) {
   const el = document.getElementById("guideContext");

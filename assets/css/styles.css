@@ -1169,6 +1169,22 @@ em { color: var(--ink-0); font-style: italic; }
   box-shadow: 0 0 14px rgba(167,139,250,0.45);
 }
 
+/* Pause/resume — only visible while The Librarian is speaking */
+.guide-pause .icon-play { display: none; }
+.guide-pause.paused .icon-pause { display: none; }
+.guide-pause.paused .icon-play { display: inline; }
+.guide-pause:not(.paused) {
+  background: rgba(251,113,133,0.16);
+  border-color: var(--rose);
+  color: var(--rose);
+  animation: micPulse 1.6s ease-in-out infinite;
+}
+.guide-pause.paused {
+  background: rgba(167,139,250,0.18);
+  border-color: var(--line-2);
+  color: var(--ink-0);
+}
+
 /* ============================================================
    TTS — listen button + states
    ============================================================ */
