@@ -4835,7 +4835,7 @@ function navigateToHit(hit) {
 
 async function generateAndAddEntity(query) {
   const token = ++state.genToken;   // drop stale results from rapid double-searches
-  showGenerationOverlay(`searching for "${query}"`, "Consulting The Librarian");
+  showGenerationOverlay(`Navigating to ${query}`, "Consulting The Librarian");
   state.generatingNow = true;
   try {
     const result = await callClaudeForGeneration(query);
