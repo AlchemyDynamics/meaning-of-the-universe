@@ -1431,16 +1431,22 @@ function updateMoonPositions(t) {
 function enterMoon(moonRecord) {
   stopSpeech();   // halt any narration from the previous entry
   const m = moonRecord;
-  m.paused = true;
+  // Moon keeps orbiting; the camera will follow it (set up below).
   state.currentMoon = m.sub;
   state.mode = "transit";
   state.afterTransit = "moon";
 
-  // camera target: a position near the moon, with the planet in the background
-  const moonPos = m.group.position.clone();
+  // Snapshot a static "viewing offset" relative to the moon — recomputed
+  // each frame as moonPos + offset so the camera tracks the moving moon
+  // without changing direction relative to the orbit.
+  const moonPos = new THREE.Vector3();
+  m.group.getWorldPosition(moonPos);
   const fromOrigin = moonPos.clone().normalize();
-  const cameraOffset = fromOrigin.multiplyScalar(2.0).add(new THREE.Vector3(0, 0.6, 0));
-  state.cameraTargetPos = moonPos.clone().add(cameraOffset);
+  state.followMoonId = m.id;
+  state.followMoonOffset = fromOrigin.multiplyScalar(2.0).add(new THREE.Vector3(0, 0.6, 0));
+  state._lastMoonFollowPos = null;     // recaptured on arrival
+
+  state.cameraTargetPos = moonPos.clone().add(state.followMoonOffset);
   state.cameraTargetLook = moonPos.clone();
   state.controls.minDistance = 1.5;
   state.controls.maxDistance = 14;
@@ -1460,6 +1466,9 @@ function returnToPlanet() {
     m.paused = false;
     m.halo.scale.set(m.size * 4, m.size * 4, 1);
   }
+  state.followMoonId = null;
+  state.followMoonOffset = null;
+  state._lastMoonFollowPos = null;
   state.currentMoon = null;
 
   // re-center on planet
@@ -1788,6 +1797,26 @@ function startLoop() {
       state.planetGroup.rotation.y += dt * 0.08;
       state.planetMesh.material.uniforms.uTime.value = t;
       updateMoonPositions(t);
+      // Follow the focused moon: update transit targets while inflight,
+      // or shift camera + look-target by the moon's per-frame delta once
+      // we've arrived. This keeps the moon stationary in view while it
+      // continues orbiting the star.
+      if (state.followMoonId) {
+        const fm = state.moonMeshes.find(mm => mm.id === state.followMoonId);
+        if (fm) {
+          const mp = new THREE.Vector3();
+          fm.group.getWorldPosition(mp);
+          if (state.mode === "transit" && state.cameraTargetPos && state.followMoonOffset) {
+            state.cameraTargetPos.copy(mp).add(state.followMoonOffset);
+            state.cameraTargetLook.copy(mp);
+          } else if (state.mode === "moon" && state._lastMoonFollowPos) {
+            const delta = mp.clone().sub(state._lastMoonFollowPos);
+            state.camera.position.add(delta);
+            state.controls.target.add(delta);
+          }
+          state._lastMoonFollowPos = mp.clone();
+        }
+      }
     }
 
     // surface scene — animate shader + drift particles
