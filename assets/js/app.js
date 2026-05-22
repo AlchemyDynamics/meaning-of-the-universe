@@ -111,7 +111,6 @@ function setupBootBegin() {
     overlay = document.createElement("div");
     overlay.className = "boot-begin-overlay";
     overlay.id = "bootBeginOverlay";
-    overlay.innerHTML = `<div class="boot-begin-prompt">click anywhere to begin</div><span class="boot-begin-hint">enters with sound</span>`;
     boot.appendChild(overlay);
   }
 
@@ -254,19 +253,21 @@ function getAudioContext() {
 
 /* Eight crystal-bell tones — a FULL C major scale, C5 → C6.
    Each chakra rings its own note (root C, sacral D, solar E, heart F,
-   throat G, third-eye A, crown B) and an 8th tone resolves on the
-   octave C6 as the cadence. Each tone has a primary sine + a chorus-
-   detuned partner + an octave sparkle harmonic through a low-pass.
-   Long exponential decay so they overlap into a building chord. */
+   throat G, third-eye A, crown B) and the 8th cadence is a HARMONIZED
+   C major chord — root, third, fifth, and octave-above stacked — so
+   the ascent lands on a full chord instead of a single note.
+   Each tone has a primary sine + a chorus-detuned partner + an octave
+   sparkle harmonic through a low-pass, with a long decay so they
+   overlap into a building chord. */
 const CHAKRA_TONES = [
-  { freq: 523.25,  when: 0.20 },  // C5  — root
-  { freq: 587.33,  when: 0.60 },  // D5  — sacral
-  { freq: 659.25,  when: 1.00 },  // E5  — solar plexus
-  { freq: 698.46,  when: 1.40 },  // F5  — heart
-  { freq: 783.99,  when: 1.80 },  // G5  — throat
-  { freq: 880.00,  when: 2.20 },  // A5  — third eye
-  { freq: 987.77,  when: 2.55 },  // B5  — crown (leading tone)
-  { freq: 1046.50, when: 2.90 },  // C6  — octave resolution
+  { freqs: [523.25],                            when: 0.20 },  // C5  — root
+  { freqs: [587.33],                            when: 0.60 },  // D5  — sacral
+  { freqs: [659.25],                            when: 1.00 },  // E5  — solar plexus
+  { freqs: [698.46],                            when: 1.40 },  // F5  — heart
+  { freqs: [783.99],                            when: 1.80 },  // G5  — throat
+  { freqs: [880.00],                            when: 2.20 },  // A5  — third eye
+  { freqs: [987.77],                            when: 2.55 },  // B5  — crown (leading tone)
+  { freqs: [523.25, 659.25, 783.99, 1046.50],   when: 2.90 },  // C major chord — resolution
 ];
 
 function playBootChakraTones() {
@@ -282,7 +283,9 @@ function playBootChakraTones() {
   // animation. If the context isn't running right now, accept silence; the
   // tones belong to the intro or nowhere.
   if (ctx.state !== "running") return;
-  for (const t of CHAKRA_TONES) playGlassBell(ctx, t.freq, t.when);
+  for (const t of CHAKRA_TONES) {
+    for (const f of t.freqs) playGlassBell(ctx, f, t.when);
+  }
 }
 
 function playGlassBell(ctx, freq, when) {
