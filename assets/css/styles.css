@@ -182,9 +182,8 @@ em { color: var(--ink-0); font-style: italic; }
   animation: bootTextFade 5s ease forwards;
 }
 @keyframes bootTextFade {
-  0%   { opacity: 0; transform: translateY(16px); }
-  20%  { opacity: 1; transform: translateY(0); }
-  70%  { opacity: 1; }
+  0%   { opacity: 1; transform: translateY(0); }
+  60%  { opacity: 1; transform: translateY(0); }
   100% { opacity: 0; transform: translateY(-8px); }
 }
 .boot-title { font-family: var(--serif); font-size: clamp(28px, 4vw, 44px); font-weight: 300; letter-spacing: 0.04em; color: var(--ink-0); }

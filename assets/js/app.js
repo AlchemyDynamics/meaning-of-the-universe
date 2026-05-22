@@ -80,7 +80,7 @@ window.addEventListener("DOMContentLoaded", () => {
   setupBootBegin();
 
   try {
-    setBootStatus("ready — tap begin to enter");
+    setBootStatus("");
     loadPersistedEntities();
     initScene();
     buildStarfield();
