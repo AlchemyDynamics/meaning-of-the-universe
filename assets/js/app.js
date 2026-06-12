@@ -4069,7 +4069,7 @@ function setupWorldLabsSettings() {
   model.value = state.worldLabsModel || "marble-1.1";
   status.textContent = state.worldLabsKey ? "connected" : "not connected";
 
-  document.getElementById("wlKeySave").addEventListener("click", () => {
+  const saveWlKey = () => {
     const key = keyInput.value.trim();
     state.worldLabsKey = key;
     state.worldLabsModel = model.value;
@@ -4078,6 +4078,10 @@ function setupWorldLabsSettings() {
     localStorage.setItem("motu.worldLabs.model", state.worldLabsModel);
     status.textContent = key ? "connected" : "not connected";
     toast(key ? "World Labs key saved" : "World Labs key cleared");
+  };
+  document.getElementById("wlKeySave").addEventListener("click", saveWlKey);
+  keyInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); saveWlKey(); }
   });
   document.getElementById("wlDisconnect").addEventListener("click", () => {
     state.worldLabsKey = "";
