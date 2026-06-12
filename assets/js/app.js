@@ -1161,7 +1161,6 @@ function setupSurfaceMode() {
     if (entry) startWorldLabsGeneration(entry);
   });
   document.getElementById("surfaceOpenWorld").addEventListener("click", openSurfaceWorldViewer);
-  document.getElementById("surfaceCloseViewer").addEventListener("click", closeSurfaceWorldViewer);
   document.getElementById("surfaceShowSeed").addEventListener("click", () => {
     const entry = currentEntry();
     if (!entry) return;
@@ -1564,21 +1563,15 @@ function openSurfaceWorldViewer() {
   const entry = currentEntry();
   const url = entry && getSurfaceWorld(entry)?.world?.world_marble_url;
   if (!url) return;
-  const wrap = document.getElementById("surfaceWorldFrameWrap");
-  const frame = document.getElementById("surfaceWorldFrame");
-  // Re-parent to <body>: inside .hud (z-index 10) the wrap is trapped in a
-  // lower stacking context and the floating UI (music dock, librarian,
-  // dyk card) paints over the fullscreen viewer.
-  if (wrap.parentElement !== document.body) document.body.appendChild(wrap);
-  frame.src = url;
-  wrap.hidden = false;
+  // marble.worldlabs.ai sends X-Frame-Options: DENY / frame-ancestors 'none',
+  // so the viewer can never render inside an iframe — open it in a new tab.
+  // (Worlds are created private, so the tab needs the owner's Marble login.)
+  window.open(url, "_blank", "noopener");
 }
 
 function closeSurfaceWorldViewer() {
-  const wrap = document.getElementById("surfaceWorldFrameWrap");
-  const frame = document.getElementById("surfaceWorldFrame");
-  if (wrap) wrap.hidden = true;
-  if (frame) frame.src = "about:blank";
+  // The embedded-iframe viewer was removed (Marble blocks framing);
+  // kept as a no-op hook for callers like exitSurface().
 }
 
 function buildWorldLabsPrompt(entry) {

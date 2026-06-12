@@ -925,34 +925,6 @@ em { color: var(--ink-0); font-style: italic; }
   background: rgba(167,139,250,0.22);
 }
 .surface-world-btn[disabled] { opacity: 0.45; cursor: progress; }
-.surface-world-frame-wrap {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  background: #000;
-}
-.surface-world-frame {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  display: block;
-}
-.surface-frame-close {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  z-index: 2;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: lowercase;
-  color: var(--ink-0);
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: rgba(8,8,22,0.72);
-  border: 1px solid var(--line-2);
-  backdrop-filter: blur(10px);
-}
 
 .wl-row .guide-key {
   width: 100%;
