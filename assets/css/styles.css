@@ -9,7 +9,7 @@
   --ink-0: #f4f1ff;
   --ink-1: #c8c1e6;
   --ink-2: #8b85a8;
-  --ink-3: #555170;
+  --ink-3: #6e6a90;   /* lifted from #555170 — hint text was below 3:1 contrast */
   --accent: #a78bfa;
   --accent-2: #818cf8;
   --accent-3: #f0abfc;
@@ -206,7 +206,8 @@ em { color: var(--ink-0); font-style: italic; }
 .hud-top-center { top: 24px; left: 50%; transform: translateX(-50%); width: min(540px, 40vw); }
 .hud-top-right { top: 24px; right: 32px; display: flex; gap: 8px; }
 .hud-bottom-left { bottom: 28px; left: 32px; }
-.hud-bottom-right { bottom: 28px; right: 32px; }
+/* sits above the librarian toggle (fixed at bottom:28/right:32) */
+.hud-bottom-right { bottom: 84px; right: 32px; }
 
 /* search */
 .search {
@@ -848,6 +849,129 @@ em { color: var(--ink-0); font-style: italic; }
   font-size: clamp(14px, 1.5vw, 18px);
   line-height: 1.5;
   color: var(--ink-1);
+}
+
+.surface-world-dock {
+  position: absolute;
+  right: 28px;
+  bottom: 28px;
+  z-index: 14;
+  width: min(330px, calc(100vw - 56px));
+  padding: 14px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.45), 0 0 28px rgba(167,139,250,0.12);
+  animation: fadeIn 0.6s ease 0.7s both;
+}
+.surface-world-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+.surface-world-eyebrow {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.surface-world-status {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-2);
+  text-align: right;
+}
+.surface-seed-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  margin-bottom: 10px;
+  background: rgba(0,0,0,0.35);
+}
+.surface-world-caption {
+  min-height: 18px;
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-1);
+}
+.surface-world-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.surface-world-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: var(--ink-1);
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(167,139,250,0.08);
+  border: 1px solid var(--line);
+}
+.surface-world-btn:hover { color: var(--ink-0); border-color: var(--line-2); background: rgba(167,139,250,0.16); }
+.surface-world-btn.primary {
+  color: var(--ink-0);
+  border-color: var(--accent);
+  background: rgba(167,139,250,0.22);
+}
+.surface-world-btn[disabled] { opacity: 0.45; cursor: progress; }
+.surface-world-frame-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: #000;
+}
+.surface-world-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+.surface-frame-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 2;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: lowercase;
+  color: var(--ink-0);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(8,8,22,0.72);
+  border: 1px solid var(--line-2);
+  backdrop-filter: blur(10px);
+}
+
+.wl-row .guide-key {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .surface-world-dock {
+    left: 12px;
+    right: 12px;
+    bottom: 16px;
+    width: auto;
+  }
+  .surface-overlay {
+    top: 16px;
+    padding: 12px 18px;
+  }
+  .surface-summary {
+    display: none;
+  }
 }
 
 /* ============================================================
@@ -1503,7 +1627,6 @@ body.dictionary-on .card { cursor: help; }
   animation: fadeIn 0.2s ease;
 }
 .music-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; }
-.music-status { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; color: var(--ink-2); }
 .music-track-name {
   text-align: center;
   font-family: var(--serif); font-style: italic; font-size: 13px;
@@ -1590,9 +1713,12 @@ body.dictionary-on .card { cursor: help; }
 @media (max-width: 720px) {
   .hud-top-left { left: 16px; right: 16px; max-width: none; top: 16px; }
   .hud-top-center { top: 70px; left: 16px; right: 16px; width: auto; transform: none; }
-  .hud-top-right { right: 16px; top: 16px; }
+  /* chip row drops below the search bar and wraps — 8 chips can't fit
+     beside the brand on a phone */
+  .hud-top-right { left: 16px; right: 16px; top: 118px; flex-wrap: wrap; justify-content: center; }
   .search-hint { display: none; }
   .hud-bottom-left, .hud-bottom-right { left: 16px; right: 16px; }
+  .hud-bottom-right { bottom: 64px; }
   .brand-name { font-size: 17px; }
   .brand-sub { display: none; }
   .planet-panel { right: 4vw; left: 4vw; width: auto; padding: 22px 20px; top: auto; bottom: 90px; transform: none; max-height: 70vh; overflow-y: auto; }

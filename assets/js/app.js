@@ -35,8 +35,7 @@ const state = {
   currentMoon: null,        // moon object when in moon mode
   topicMeshes: new Map(),   // id -> mesh
   moonMeshes: [],           // [{ id, group, mesh, orbit, hoverHalo }]
-  generatingNow: false,
-  genToken: 0,
+  genToken: 0,            // bumped to cancel/supersede any in-flight generation
   edgeLines: null,
   starfield: null,
   planetMesh: null,
@@ -55,10 +54,10 @@ const state = {
   // multi-star fusion via shift-select
   selectedStars: new Set(),
   pendingFusion: null,
-  // Flag: when the user arrives at a freshly-generated star, auto-play its narration.
-  autoNarrateOnArrival: false,
   // guide
   guideKey: localStorage.getItem("motu.guideKey") || "",
+  worldLabsKey: localStorage.getItem("motu.worldLabs.key") || "",
+  worldLabsModel: localStorage.getItem("motu.worldLabs.model") || "marble-1.1",
   guideHistory: (() => {
     try { return (JSON.parse(localStorage.getItem("motu.guideHistory") || "[]") || []).slice(-20); }
     catch { return []; }
@@ -93,7 +92,7 @@ window.addEventListener("DOMContentLoaded", () => {
     bindTTSButtons();
     startLoop();
     document.getElementById("topicCount").textContent = TOPICS.length;
-    document.getElementById("docCount").textContent = TOPICS.reduce((a, t) => a + t.documents.length, 0);
+    document.getElementById("docCount").textContent = TOPICS.reduce((a, t) => a + (t.documents?.length || 0), 0);
   } catch (err) {
     console.error("[init] failed", err);
     setBootStatus("init failed — see browser console");
@@ -112,6 +111,11 @@ function setupBootBegin() {
     overlay.className = "boot-begin-overlay";
     overlay.id = "bootBeginOverlay";
     boot.appendChild(overlay);
+  }
+  if (!overlay.querySelector(".boot-begin-prompt")) {
+    overlay.innerHTML =
+      `<div class="boot-begin-prompt">click anywhere to begin</div>` +
+      `<div class="boot-begin-hint">sound on · headphones recommended</div>`;
   }
 
   let begun = false;
@@ -174,17 +178,15 @@ function scheduleBootDismiss() {
   const skipBoot = () => {
     if (performance.now() - bootStarted < 600) return;     // honor the first moment
     const b = document.getElementById("boot");
+    window.removeEventListener("keydown", skipBoot);
+    window.removeEventListener("pointerdown", skipBoot);
     if (!b) return;
     b.classList.add("opening");
     b.classList.add("fade");
     setTimeout(() => { const x = document.getElementById("boot"); if (x) x.remove(); }, 700);
-    window.removeEventListener("keydown", skipBoot);
-    window.removeEventListener("pointerdown", skipBoot);
   };
   window.addEventListener("pointerdown", skipBoot);
   window.addEventListener("keydown", skipBoot);
-  // ascending chakra tones, scheduled at the same instants the chakras flare
-  setTimeout(() => playBootChakraTones(), 80);
   // try to resume audio context on first user gesture (in case autoplay was blocked)
   const resumeOnGesture = () => {
     if (_audioCtx && _audioCtx.state === "suspended") _audioCtx.resume().catch(() => {});
@@ -519,8 +521,10 @@ function handleCollideClick() {
   if (!state.hovered) return;
   if (!state.collideFirst) {
     state.collideFirst = state.hovered;
+    // userData.selected drives the per-frame corona scaling — a one-shot
+    // scale.set() here would be overwritten on the next rendered frame
     const node = state.topicMeshes.get(state.hovered);
-    if (node) node.userData.corona?.scale.set(node.userData.size * 16, node.userData.size * 16, 1);
+    if (node) node.userData.selected = true;
     showCollideBanner(`now aim at a second idea — colliding with “${topicById(state.hovered).name}”`);
     return;
   }
@@ -704,7 +708,7 @@ function addStarLabel(topic) {
   const el = document.createElement("div");
   el.className = "star-label";
   el.dataset.topicId = topic.id;
-  el.innerHTML = `<span class="star-label-dot" style="background:${topic.color};color:${topic.color}"></span>${escapeHtml(topic.name)}`;
+  el.innerHTML = `<span class="star-label-dot" style="background:${safeCssColor(topic.color)};color:${safeCssColor(topic.color)}"></span>${escapeHtml(topic.name)}`;
   host.appendChild(el);
   state.starLabels.set(topic.id, el);
 }
@@ -1152,6 +1156,18 @@ function setupSurfaceMode() {
     document.getElementById("modal-surface-confirm").hidden = true;
   });
   document.getElementById("btn-surface-return").addEventListener("click", exitSurface);
+  document.getElementById("surfaceGenerateWorld").addEventListener("click", () => {
+    const entry = currentEntry();
+    if (entry) startWorldLabsGeneration(entry);
+  });
+  document.getElementById("surfaceOpenWorld").addEventListener("click", openSurfaceWorldViewer);
+  document.getElementById("surfaceCloseViewer").addEventListener("click", closeSurfaceWorldViewer);
+  document.getElementById("surfaceShowSeed").addEventListener("click", () => {
+    const entry = currentEntry();
+    if (!entry) return;
+    const record = ensureSurfaceSeedRecord(entry);
+    renderSurfaceWorldDock(entry, record, { showSeed: true });
+  });
 }
 
 function enterSurface() {
@@ -1167,6 +1183,7 @@ function enterSurface() {
 
   // Build the surface scene (or refresh it for this topic)
   buildSurfaceScene(entry);
+  syncSurfaceWorld(entry);
 
   // Hide planet HUD / moons; show surface HUD
   document.getElementById("hud-planet").hidden = true;
@@ -1189,6 +1206,7 @@ function enterSurface() {
 
 function exitSurface() {
   stopSpeech();
+  closeSurfaceWorldViewer();
   // Tear down the surface scene
   disposeSurfaceScene();
   document.getElementById("hud-surface").hidden = true;
@@ -1205,6 +1223,9 @@ function exitSurface() {
   state.afterTransit = "planet";
   state.controls.minDistance = 6;
   state.controls.maxDistance = 22;
+  state.controls.enableZoom = true;
+  state.controls.enablePan = true;
+  state.controls.rotateSpeed = 0.45;
 }
 
 function onArriveAtSurface() {
@@ -1231,27 +1252,48 @@ function populateSurfaceOverlay(entry) {
 function buildSurfaceScene(entry) {
   disposeSurfaceScene();
   const group = new THREE.Group();
+  const cachedWorld = getSurfaceWorld(entry)?.world || null;
+  const panoUrl = cachedWorld?.assets?.imagery?.pano_url || null;
 
   // Giant inverted sphere using the topic's planet shader — the inside of the world.
   const theme = entry.planetTheme || { type: "crystal", params: {} };
   const geo = new THREE.SphereGeometry(45, 96, 96);
-  const mat = new THREE.ShaderMaterial({
-    vertexShader: planetVertex,
-    fragmentShader: planetFragment,
-    side: THREE.BackSide,
-    uniforms: {
-      uTime:   { value: 0 },
-      uTheme:  { value: THEME_INDEX[theme.type] ?? 0 },
-      uHue:    { value: theme.params?.hue ?? 0.7 },
-      uAccent: { value: theme.params?.accent ?? 0.95 },
-      uParamA: {
-        value: theme.params?.bands ?? theme.params?.complexity
-            ?? theme.params?.density ?? theme.params?.facets
-            ?? theme.params?.turbulence ?? theme.params?.glitch
-            ?? theme.params?.structure ?? 6.0,
+  let mat;
+  if (panoUrl) {
+    mat = new THREE.MeshBasicMaterial({
+      side: THREE.BackSide,
+      color: 0xffffff,
+    });
+    new THREE.TextureLoader().load(
+      panoUrl,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        mat.map = tex;
+        mat.needsUpdate = true;
       },
-    },
-  });
+      undefined,
+      () => toast("panorama failed to load — using procedural surface")
+    );
+  } else {
+    mat = new THREE.ShaderMaterial({
+      vertexShader: planetVertex,
+      fragmentShader: planetFragment,
+      side: THREE.BackSide,
+      uniforms: {
+        uTime:   { value: 0 },
+        uTheme:  { value: THEME_INDEX[theme.type] ?? 0 },
+        uHue:    { value: theme.params?.hue ?? 0.7 },
+        uAccent: { value: theme.params?.accent ?? 0.95 },
+        uParamA: {
+          value: theme.params?.bands ?? theme.params?.complexity
+              ?? theme.params?.density ?? theme.params?.facets
+              ?? theme.params?.turbulence ?? theme.params?.glitch
+              ?? theme.params?.structure ?? 6.0,
+        },
+      },
+    });
+  }
   const dome = new THREE.Mesh(geo, mat);
   group.add(dome);
 
@@ -1286,7 +1328,7 @@ function buildSurfaceScene(entry) {
   group.add(particles);
 
   state.surfaceGroup = group;
-  state.surfaceMaterial = mat;
+  state.surfaceMaterial = panoUrl ? null : mat;
   state.surfaceParticles = particles;
   state.scene.add(group);
 }
@@ -1304,6 +1346,430 @@ function disposeSurfaceScene() {
   state.surfaceGroup = null;
   state.surfaceMaterial = null;
   state.surfaceParticles = null;
+}
+
+/* ============================================================
+   World Labs Marble generation — conceptual surfaces
+   ------------------------------------------------------------
+   The first surface is instant and procedural. When the user has
+   saved a World Labs Platform key and explicitly clicks generate,
+   we create a thematic seed image in canvas, send it as a base64
+   image prompt, poll the long-running operation, and then use the
+   returned panorama / Marble URL to enrich the surface.
+   ============================================================ */
+
+function worldCacheKey(entry) {
+  return `motu.world.${entry.id}`;
+}
+
+function getSurfaceWorld(entry) {
+  try { return JSON.parse(localStorage.getItem(worldCacheKey(entry)) || "null"); }
+  catch { return null; }
+}
+
+function saveSurfaceWorld(entry, record) {
+  try { localStorage.setItem(worldCacheKey(entry), JSON.stringify(record)); }
+  catch (e) { handleQuotaError(e); }
+}
+
+function ensureSurfaceSeedRecord(entry) {
+  const existing = getSurfaceWorld(entry) || {};
+  if (existing.seedBase64 && existing.prompt) {
+    // migrate older records that stored the same PNG twice (base64 + data
+    // URL) — that doubled localStorage usage and exhausted the quota fast
+    if (existing.seedImage) {
+      delete existing.seedImage;
+      saveSurfaceWorld(entry, existing);
+    }
+    return existing;
+  }
+  const seed = generateWorldSeedImage(entry);
+  const record = {
+    ...existing,
+    status: existing.status || "seeded",
+    seedBase64: seed.base64,
+    prompt: buildWorldLabsPrompt(entry),
+    updatedAt: new Date().toISOString(),
+  };
+  delete record.seedImage;
+  saveSurfaceWorld(entry, record);
+  return record;
+}
+
+/* The seed is stored once as base64; rebuild a data URL for previews. */
+function seedImageSrc(record) {
+  if (record?.seedBase64) return "data:image/png;base64," + record.seedBase64;
+  return record?.seedImage || null;
+}
+
+function syncSurfaceWorld(entry) {
+  const record = ensureSurfaceSeedRecord(entry);
+  renderSurfaceWorldDock(entry, record);
+  if (record.status === "generating" && record.operationId) {
+    pollWorldLabsOperation(entry, record.operationId);
+  }
+}
+
+function renderSurfaceWorldDock(entry, record, opts = {}) {
+  const status = document.getElementById("surfaceWorldStatus");
+  const caption = document.getElementById("surfaceWorldCaption");
+  const preview = document.getElementById("surfaceSeedPreview");
+  const generateBtn = document.getElementById("surfaceGenerateWorld");
+  const openBtn = document.getElementById("surfaceOpenWorld");
+  if (!status || !caption || !generateBtn || !openBtn) return;
+
+  const world = record?.world || null;
+  const hasWorld = !!world?.world_marble_url;
+  const isGenerating = record?.status === "generating";
+  status.textContent = hasWorld ? "world ready" : isGenerating ? progressLabel(record) : "seed ready";
+  caption.textContent = world?.assets?.caption || (hasWorld
+    ? `${entry.name} is ready to explore.`
+    : state.worldLabsKey
+      ? "A seed image has been composed from the entry. Generate when you are ready to spend World Labs API credits."
+      : "Save a World Labs key in settings to create an explorable Marble world.");
+  generateBtn.textContent = hasWorld ? "regenerate" : isGenerating ? "generating..." : "generate world";
+  generateBtn.disabled = isGenerating;
+  openBtn.hidden = !hasWorld;
+  preview.hidden = !opts.showSeed;
+  const seedSrc = seedImageSrc(record);
+  if (opts.showSeed && seedSrc) preview.src = seedSrc;
+}
+
+function progressLabel(record) {
+  const pct = record?.metadata?.progress ?? record?.metadata?.progress_percentage ?? null;
+  if (typeof pct === "number") return `generating ${Math.round(pct)}%`;
+  return "generating";
+}
+
+async function startWorldLabsGeneration(entry) {
+  if (!state.worldLabsKey) {
+    toast("save a World Labs key in settings first");
+    document.getElementById("modal-settings").hidden = false;
+    return;
+  }
+  const seeded = ensureSurfaceSeedRecord(entry);
+  const record = {
+    ...seeded,
+    status: "generating",
+    error: null,
+    world: null,
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  saveSurfaceWorld(entry, record);
+  renderSurfaceWorldDock(entry, record, { showSeed: true });
+
+  try {
+    const resp = await fetch("https://api.worldlabs.ai/marble/v1/worlds:generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "WLT-Api-Key": state.worldLabsKey,
+      },
+      body: JSON.stringify({
+        display_name: entry.name.slice(0, 64),
+        model: state.worldLabsModel || "marble-1.1",
+        seed: stableWorldSeed(entry),
+        tags: worldTags(entry),
+        permission: { public: false, allow_id_access: false, allowed_readers: [], allowed_writers: [] },
+        world_prompt: {
+          type: "image",
+          image_prompt: {
+            source: "data_base64",
+            data_base64: seeded.seedBase64,
+            extension: "png",
+          },
+          is_pano: false,
+          disable_recaption: true,
+          text_prompt: seeded.prompt,
+        },
+      }),
+    });
+    if (!resp.ok) throw new Error(`World Labs ${resp.status}: ${(await resp.text()).slice(0, 220)}`);
+    const data = await resp.json();
+    const next = {
+      ...record,
+      operationId: data.operation_id,
+      metadata: data.metadata || null,
+      updatedAt: new Date().toISOString(),
+    };
+    saveSurfaceWorld(entry, next);
+    renderSurfaceWorldDock(entry, next, { showSeed: true });
+    pollWorldLabsOperation(entry, data.operation_id);
+    toast("World Labs generation started");
+  } catch (err) {
+    const failed = { ...record, status: "failed", error: err.message || String(err), updatedAt: new Date().toISOString() };
+    saveSurfaceWorld(entry, failed);
+    renderSurfaceWorldDock(entry, failed, { showSeed: true });
+    toast(`world generation failed: ${failed.error.slice(0, 90)}`);
+  }
+}
+
+async function pollWorldLabsOperation(entry, operationId) {
+  if (!operationId || state.pollingWorldOp === operationId) return;
+  state.pollingWorldOp = operationId;
+  try {
+    for (let i = 0; i < 90; i++) {
+      const current = getSurfaceWorld(entry) || {};
+      const resp = await fetch(`https://api.worldlabs.ai/marble/v1/operations/${encodeURIComponent(operationId)}`, {
+        headers: { "WLT-Api-Key": state.worldLabsKey },
+      });
+      if (!resp.ok) throw new Error(`World Labs ${resp.status}: ${(await resp.text()).slice(0, 180)}`);
+      const data = await resp.json();
+      const next = {
+        ...current,
+        operationId,
+        status: data.done ? (data.error ? "failed" : "ready") : "generating",
+        metadata: data.metadata || null,
+        error: data.error?.message || null,
+        world: data.done && !data.error ? normalizeWorldLabsResponse(data.response) : current.world || null,
+        updatedAt: new Date().toISOString(),
+      };
+      saveSurfaceWorld(entry, next);
+      // Only touch the live scene/dock if the user is still on THIS entry's
+      // surface — they may have exited or warped while we polled (minutes).
+      const onThisSurface =
+        (state.mode === "surface" || state.afterTransit === "surface") &&
+        currentEntry()?.id === entry.id;
+      if (onThisSurface) renderSurfaceWorldDock(entry, next);
+      if (data.done) {
+        if (next.world) {
+          if (onThisSurface) buildSurfaceScene(entry);
+          toast(`${entry.name} world ready`);
+        } else {
+          toast(`world generation failed: ${(next.error || "unknown").slice(0, 90)}`);
+        }
+        return;
+      }
+      await delay(5000);
+    }
+    toast("world is still generating — it will resume polling when you return");
+  } catch (err) {
+    const current = getSurfaceWorld(entry) || {};
+    const failed = { ...current, status: "failed", error: err.message || String(err), updatedAt: new Date().toISOString() };
+    saveSurfaceWorld(entry, failed);
+    renderSurfaceWorldDock(entry, failed);
+    toast(`world poll failed: ${failed.error.slice(0, 90)}`);
+  } finally {
+    if (state.pollingWorldOp === operationId) state.pollingWorldOp = null;
+  }
+}
+
+function normalizeWorldLabsResponse(response) {
+  if (!response) return null;
+  return response.world || response;
+}
+
+function openSurfaceWorldViewer() {
+  const entry = currentEntry();
+  const url = entry && getSurfaceWorld(entry)?.world?.world_marble_url;
+  if (!url) return;
+  const wrap = document.getElementById("surfaceWorldFrameWrap");
+  const frame = document.getElementById("surfaceWorldFrame");
+  // Re-parent to <body>: inside .hud (z-index 10) the wrap is trapped in a
+  // lower stacking context and the floating UI (music dock, librarian,
+  // dyk card) paints over the fullscreen viewer.
+  if (wrap.parentElement !== document.body) document.body.appendChild(wrap);
+  frame.src = url;
+  wrap.hidden = false;
+}
+
+function closeSurfaceWorldViewer() {
+  const wrap = document.getElementById("surfaceWorldFrameWrap");
+  const frame = document.getElementById("surfaceWorldFrame");
+  if (wrap) wrap.hidden = true;
+  if (frame) frame.src = "about:blank";
+}
+
+function buildWorldLabsPrompt(entry) {
+  const name = entry.name || "Unknown Topic";
+  const tags = (entry.tags || []).slice(0, 6).join(", ");
+  const docs = (entry.documents || []).slice(0, 3).map(d => d.title).join("; ");
+  const portals = derivePortalPrompts(entry).join("; ");
+  return [
+    `Create an explorable conceptual world for the research entry "${name}".`,
+    `Subject summary: ${entry.summary || entry.conclusion || ""}`,
+    `Core distillation: ${entry.conclusion || ""}`,
+    tags ? `Motifs and tags: ${tags}.` : "",
+    docs ? `Research rooms may evoke: ${docs}.` : "",
+    `The world should be spatially coherent, navigable, and readable as a place. It must include doorways, arches, tunnels, or luminous portals that invite deeper exploration of sub-themes: ${portals}.`,
+    `Avoid literal text labels except when the subject is computation or language. Make the environment immersive, mysterious, and intellectually themed rather than decorative.`,
+    worldStyleCue(entry),
+  ].filter(Boolean).join("\n");
+}
+
+function worldStyleCue(entry) {
+  const id = (entry.id || entry.name || "").toLowerCase();
+  const text = `${entry.name} ${(entry.tags || []).join(" ")}`.toLowerCase();
+  if (id.includes("dream") || text.includes("dream")) return "Dream worlds should feel oneiric: soft impossible architecture, floating curtains of light, half-remembered rooms, and portals like sleep thresholds.";
+  if (id.includes("computation") || text.includes("code") || text.includes("cryptography")) return "Computation worlds should contain living code in walls, circuit-cathedral corridors, glowing logic gates, and recursive portals into deeper abstraction.";
+  if (text.includes("plasma")) return "Plasma worlds should feel magnetized: braided currents, auroral rivers, charged filaments, and arched field-line gates.";
+  if (text.includes("religion") || text.includes("myth")) return "Sacred or mythic worlds should feel ceremonial without copying any single living tradition: thresholds, sanctums, story-gates, and layered cosmograms.";
+  if (text.includes("cosmology") || text.includes("astrophysics")) return "Cosmic worlds should mix observatory architecture, lensing skies, horizon portals, and scale-shifting rooms.";
+  return "Use the entry's color, metaphors, and open questions as architecture, light, texture, and passages deeper into the idea.";
+}
+
+function derivePortalPrompts(entry) {
+  const out = [];
+  for (const t of entry.tags || []) if (t && out.length < 4) out.push(t);
+  for (const d of entry.documents || []) if (d?.title && out.length < 6) out.push(d.title);
+  if (entry.card?.hypotheses) for (const h of entry.card.hypotheses) if (out.length < 6) out.push(h);
+  return out.length ? out.slice(0, 6) : ["origins", "evidence", "paradox", "future implications"];
+}
+
+function generateWorldSeedImage(entry) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1536;
+  canvas.height = 864;
+  const ctx = canvas.getContext("2d");
+  const base = new THREE.Color(entry.color || "#a78bfa");
+  const accent = new THREE.Color().setHSL((base.getHSL({}).h + 0.18) % 1, 0.72, 0.58);
+  const dark = new THREE.Color().setHSL(base.getHSL({}).h, 0.55, 0.08);
+
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, `#${dark.getHexString()}`);
+  grad.addColorStop(0.45, "#080814");
+  grad.addColorStop(1, `#${base.getHexString()}`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawSeedHorizon(ctx, canvas, base, accent);
+  drawSeedPortals(ctx, canvas, entry, base, accent);
+  drawThemeGlyphs(ctx, canvas, entry, base, accent);
+  drawSeedAtmosphere(ctx, canvas, entry, base, accent);
+
+  const dataUrl = canvas.toDataURL("image/png");
+  return { dataUrl, base64: dataUrl.split(",")[1] };
+}
+
+function drawSeedHorizon(ctx, canvas, base, accent) {
+  const y = canvas.height * 0.68;
+  const g = ctx.createLinearGradient(0, y - 180, 0, canvas.height);
+  g.addColorStop(0, `rgba(${Math.round(accent.r*255)},${Math.round(accent.g*255)},${Math.round(accent.b*255)},0.0)`);
+  g.addColorStop(1, "rgba(0,0,0,0.72)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, y - 240, canvas.width, canvas.height);
+  ctx.strokeStyle = `rgba(${Math.round(base.r*255)},${Math.round(base.g*255)},${Math.round(base.b*255)},0.42)`;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 18; i++) {
+    const yy = y + i * 15;
+    ctx.beginPath();
+    ctx.moveTo(0, yy);
+    ctx.quadraticCurveTo(canvas.width * 0.5, yy - 40 - i * 2, canvas.width, yy);
+    ctx.stroke();
+  }
+}
+
+function drawSeedPortals(ctx, canvas, entry, base, accent) {
+  const portals = derivePortalPrompts(entry).slice(0, 5);
+  const slots = [
+    [0.5, 0.45, 150],
+    [0.2, 0.54, 96],
+    [0.8, 0.54, 96],
+    [0.34, 0.62, 70],
+    [0.66, 0.62, 70],
+  ];
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.font = "22px serif";
+  for (let i = 0; i < portals.length; i++) {
+    const [xv, yv, r] = slots[i];
+    const x = canvas.width * xv;
+    const y = canvas.height * yv;
+    const glow = ctx.createRadialGradient(x, y, 8, x, y, r * 1.4);
+    glow.addColorStop(0, `rgba(${Math.round(accent.r*255)},${Math.round(accent.g*255)},${Math.round(accent.b*255)},0.65)`);
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - r * 1.8, y - r * 1.8, r * 3.6, r * 3.6);
+    ctx.strokeStyle = `rgba(${Math.round(accent.r*255)},${Math.round(accent.g*255)},${Math.round(accent.b*255)},0.85)`;
+    ctx.lineWidth = i === 0 ? 5 : 3;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 0.45, r * 0.82, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(244,241,255,0.78)";
+    ctx.fillText(String(portals[i]).slice(0, 28), x, y + r * 1.02);
+  }
+  ctx.restore();
+}
+
+function drawThemeGlyphs(ctx, canvas, entry, base, accent) {
+  const id = `${entry.id} ${entry.name} ${(entry.tags || []).join(" ")}`.toLowerCase();
+  ctx.save();
+  ctx.globalAlpha = 0.46;
+  ctx.strokeStyle = `rgba(${Math.round(accent.r*255)},${Math.round(accent.g*255)},${Math.round(accent.b*255)},0.64)`;
+  ctx.fillStyle = "rgba(255,255,255,0.62)";
+  if (id.includes("computation") || id.includes("code") || id.includes("crypto")) {
+    ctx.font = "24px monospace";
+    for (let x = 80; x < canvas.width; x += 170) {
+      for (let y = 95; y < canvas.height * 0.65; y += 58) {
+        ctx.fillText(["if ()", "0101", "{ }", "λx", "xor"][Math.floor((x + y) % 5)], x, y);
+      }
+    }
+  } else if (id.includes("dream")) {
+    for (let i = 0; i < 18; i++) {
+      ctx.beginPath();
+      const x = 80 + i * 82;
+      ctx.moveTo(x, 120 + Math.sin(i) * 30);
+      ctx.bezierCurveTo(x + 80, 60, x + 120, 220, x + 210, 150);
+      ctx.stroke();
+    }
+  } else {
+    for (let i = 0; i < 11; i++) {
+      const x = 100 + i * 130;
+      const y = 130 + (i % 3) * 55;
+      ctx.beginPath();
+      ctx.arc(x, y, 18 + (i % 4) * 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawSeedAtmosphere(ctx, canvas, entry, base, accent) {
+  const seed = stableWorldSeed(entry);
+  let n = seed;
+  const rand = () => {
+    n = (1664525 * n + 1013904223) >>> 0;
+    return n / 4294967296;
+  };
+  ctx.save();
+  for (let i = 0; i < 320; i++) {
+    const x = rand() * canvas.width;
+    const y = rand() * canvas.height * 0.72;
+    const r = 0.8 + rand() * 2.6;
+    ctx.fillStyle = rand() > 0.4
+      ? `rgba(${Math.round(accent.r*255)},${Math.round(accent.g*255)},${Math.round(accent.b*255)},${0.15 + rand() * 0.45})`
+      : `rgba(255,255,255,${0.12 + rand() * 0.38})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function stableWorldSeed(entry) {
+  const text = `${entry.id}|${entry.name}|${entry.summary || ""}`;
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function worldTags(entry) {
+  const raw = ["motu", entry.cluster, entry.name, ...(entry.tags || [])].filter(Boolean);
+  const out = [];
+  for (const tag of raw) {
+    const clean = String(tag).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
+    if (clean && !out.includes(clean)) out.push(clean);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /* ============================================================
@@ -1620,7 +2086,7 @@ function renderCard(entry) {
     for (const s of seeAlso) {
       const resolved = resolveById(s.id);
       const targetName = resolved?.entry?.name || s.name;
-      const targetColor = resolved?.entry?.color || "#a78bfa";
+      const targetColor = safeCssColor(resolved?.entry?.color || "#a78bfa");
       const pill = document.createElement("button");
       pill.type = "button";
       pill.className = "card-seealso-pill";
@@ -1884,7 +2350,10 @@ function updateMoonLabels() {
 
 const _labelV = new THREE.Vector3();
 function updateStarLabels() {
-  const inGalaxy = state.mode === "galaxy" || state.mode === "transit";
+  // During a transit, only keep labels while heading back to the galaxy —
+  // flying into a planet/surface should not project star labels over it.
+  const inGalaxy = state.mode === "galaxy" ||
+    (state.mode === "transit" && state.afterTransit === "galaxy");
   const w = window.innerWidth, h = window.innerHeight;
   for (const [id, label] of state.starLabels) {
     if (!inGalaxy) { label.classList.add("hidden"); continue; }
@@ -1931,7 +2400,7 @@ function doHoverPickMoons() {
     if (!rec) return;
     if (rec.id !== state.hoveredMoon) {
       state.hoveredMoon = rec.id;
-      tooltip.innerHTML = `${rec.sub.name}<span class="tt-sub">moon · ${rec.sub.documents.length} documents</span>`;
+      tooltip.innerHTML = `${escapeHtml(rec.sub.name)}<span class="tt-sub">moon · ${(rec.sub.documents?.length || 0)} documents</span>`;
       tooltip.hidden = false;
       document.body.style.cursor = "pointer";
     }
@@ -2022,6 +2491,7 @@ function enterPlanet(id) {
   document.getElementById("tooltip").hidden = true;
   state.hovered = null;
   state.hoveredMoon = null;
+  document.body.style.cursor = "";
 
   // build orbiting moons (if any)
   buildMoons(topic);
@@ -2136,7 +2606,7 @@ function appendSeeAlsoPills(parent, entry) {
   for (const s of seeAlso) {
     const resolved = resolveById(s.id);
     if (!resolved) continue;
-    const targetColor = resolved.entry.color || "#a78bfa";
+    const targetColor = safeCssColor(resolved.entry.color || "#a78bfa");
     const pill = document.createElement("button");
     pill.type = "button";
     pill.className = "card-seealso-pill";
@@ -2259,9 +2729,9 @@ function renderDocument(doc, allDocs) {
     <div class="doc-summary">${escapeHtml(doc.summary)}</div>
     <div class="doc-findings">
       <h5>key findings</h5>
-      <ul>${doc.findings.map(f => `<li>${escapeHtml(f)}</li>`).join("")}</ul>
+      <ul>${(doc.findings || []).map(f => `<li>${escapeHtml(f)}</li>`).join("")}</ul>
     </div>
-    <div class="doc-prose">${doc.prose.map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div>
+    <div class="doc-prose">${(doc.prose || []).map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div>
   `;
   // append sources section if the document has any
   appendSourcesIfAny(reader, doc.sources, "sources");
@@ -2456,6 +2926,16 @@ function escapeHtml(s) {
   }[ch]));
 }
 
+/* Normalize any color value (including model-generated strings) to a safe
+   #rrggbb literal before it is interpolated into an HTML attribute. */
+function safeCssColor(c, fallback = "#a78bfa") {
+  try {
+    return "#" + new THREE.Color(c).getHexString();
+  } catch (_) {
+    return fallback;
+  }
+}
+
 /* ============================================================
    UI wiring
    ============================================================ */
@@ -2538,7 +3018,7 @@ function refreshStarLabel(entry) {
   const label = state.starLabels?.get(entry.id);
   if (!label) return;
   // rebuild label content with the new name
-  label.innerHTML = `<span class="star-label-dot" style="background:${entry.color};color:${entry.color}"></span>${escapeHtml(entry.name)}`;
+  label.innerHTML = `<span class="star-label-dot" style="background:${safeCssColor(entry.color)};color:${safeCssColor(entry.color)}"></span>${escapeHtml(entry.name)}`;
 }
 
 function refreshGuideContext(entry) {
@@ -2729,8 +3209,11 @@ function loadVoices() {
   }
   TTS.voices.sort((a, b) => b.score - a.score);
 
-  // pick preferred: persisted, else first warm-female if found, else first
-  const persistedURI = localStorage.getItem("motu.tts.voiceURI");
+  // pick preferred: persisted (unified key), else first warm-female, else first
+  const unified = localStorage.getItem("motu.tts.unifiedKey") || "";
+  const persistedURI = unified.startsWith("browser:")
+    ? unified.slice("browser:".length)
+    : localStorage.getItem("motu.tts.voiceURI");
   let pick = TTS.voices.find(v => v.voice.voiceURI === persistedURI);
   if (!pick) {
     const warmRx = /aria|jenny|sonia|ava|samantha|libby|olivia|moira/i;
@@ -2858,7 +3341,11 @@ function elVoiceDescription(v) {
 
 function applyVoiceSelection(value) {
   // value: "browser:<voiceURI>" | "elevenlabs:<voiceId>"
-  const [engine, id] = value.split(":", 2);
+  // Split on the FIRST colon only — voiceURIs often contain colons
+  // (e.g. "urn:moz-tts:…"), and split(limit) would discard the tail.
+  const sep = value.indexOf(":");
+  const engine = value.slice(0, sep);
+  const id = value.slice(sep + 1);
   if (engine === "browser") {
     const rec = TTS.voices.find(v => v.voice.voiceURI === id);
     if (rec) {
@@ -2943,8 +3430,11 @@ function entryToReadable(entry, kind) {
 function startSpeech(text, btn, opts = {}) {
   stopSpeech();
   // Self-correct: if EL is configured but engine somehow drifted to browser
-  // (e.g., race during boot when elVoices populated late), force it back.
-  if (TTS.elKey && getSelectedElVoiceId() && TTS.engine !== "elevenlabs") {
+  // (e.g., race during boot when elVoices populated late), force it back —
+  // unless the user explicitly chose a browser voice (persisted selection).
+  const unified = localStorage.getItem("motu.tts.unifiedKey") || "";
+  if (TTS.elKey && getSelectedElVoiceId() && TTS.engine !== "elevenlabs" &&
+      !unified.startsWith("browser:")) {
     console.log("[TTS] auto-correcting engine to 'elevenlabs'");
     TTS.engine = "elevenlabs";
   }
@@ -2952,8 +3442,14 @@ function startSpeech(text, btn, opts = {}) {
   const entry = currentEntry();
   const kind = btn?.dataset?.ttsSource || (btn?.dataset?.ttsDoc !== undefined ? "document" : btn?.dataset?.ttsCard !== undefined ? "card" : "other");
   if (entry) listenStart(entry.id, kind, text);
-  // Narration is ElevenLabs-only (Lily). No browser-voice fallback.
-  startSpeechElevenLabs(text, btn, opts);
+  // Prefer ElevenLabs when configured; otherwise fall back to browser speech
+  // so narration still works without an EL key (and so picking a browser
+  // voice in settings actually does something).
+  if (TTS.engine === "elevenlabs" && TTS.elKey && getSelectedElVoiceId()) {
+    startSpeechElevenLabs(text, btn, opts);
+  } else {
+    startSpeechBrowser(text, btn);
+  }
 }
 
 function startSpeechBrowser(text, btn) {
@@ -3484,6 +3980,7 @@ function setupSettingsPanel() {
   document.getElementById("voiceSelect").addEventListener("change", (e) => {
     applyVoiceSelection(e.target.value);
   });
+  setupWorldLabsSettings();
 
   // ElevenLabs flow
   document.getElementById("elConnect").addEventListener("click", elConnectFlow);
@@ -3559,6 +4056,39 @@ function setupSettingsPanel() {
     document.getElementById("pitchValue").textContent = "1.00";
     // reload voices and reselect default
     loadVoices();
+  });
+}
+
+function setupWorldLabsSettings() {
+  const keyInput = document.getElementById("wlKey");
+  const model = document.getElementById("wlModel");
+  const status = document.getElementById("wlStatus");
+  if (!keyInput || !model || !status) return;
+
+  keyInput.value = state.worldLabsKey;
+  model.value = state.worldLabsModel || "marble-1.1";
+  status.textContent = state.worldLabsKey ? "connected" : "not connected";
+
+  document.getElementById("wlKeySave").addEventListener("click", () => {
+    const key = keyInput.value.trim();
+    state.worldLabsKey = key;
+    state.worldLabsModel = model.value;
+    if (key) localStorage.setItem("motu.worldLabs.key", key);
+    else localStorage.removeItem("motu.worldLabs.key");
+    localStorage.setItem("motu.worldLabs.model", state.worldLabsModel);
+    status.textContent = key ? "connected" : "not connected";
+    toast(key ? "World Labs key saved" : "World Labs key cleared");
+  });
+  document.getElementById("wlDisconnect").addEventListener("click", () => {
+    state.worldLabsKey = "";
+    keyInput.value = "";
+    localStorage.removeItem("motu.worldLabs.key");
+    status.textContent = "not connected";
+    toast("World Labs disconnected");
+  });
+  model.addEventListener("change", () => {
+    state.worldLabsModel = model.value;
+    localStorage.setItem("motu.worldLabs.model", state.worldLabsModel);
   });
 }
 
@@ -3673,6 +4203,10 @@ async function setupMusic() {
 
   await loadMusicLibrary();
   renderTrackList();
+
+  // Nothing is playing yet — show the ▶ icon until playback actually starts
+  // (the HTML defaults to the pause icon).
+  setMusicPlayIcon(true);
 
   if (MUSIC.library.length > 0) {
     // Pick a random loop and autoplay (subject to autoplay policy).
@@ -4261,6 +4795,7 @@ function attachUI() {
       if (action === "conclusion") openConclusion(entry);
       else if (action === "documents") openDocuments(entry);
       else if (action === "connections") openConnections(entry);
+      else if (action === "surface") openSurfaceConfirmation();
       else if (action === "ask-guide") {
         openGuide();
         // pre-seed an open question so the user has a productive starting point
@@ -4558,6 +5093,10 @@ async function sendGuide(text, opts = {}) {
   if (navMatch) {
     const tip = `Taking you to ${navMatch.name}. ${navMatch.summary}`;
     addGuideMessage("bot", tip, { navId: navMatch.id, navName: navMatch.name });
+    // keep user/assistant parity in history — the API rejects histories
+    // that start with (or stack) unpaired turns
+    state.guideHistory.push({ role: "assistant", content: tip });
+    persistGuideHistory();
     speak(tip);
     return;
   }
@@ -4565,6 +5104,8 @@ async function sendGuide(text, opts = {}) {
   if (!state.guideKey) {
     const msg = "I need a Claude API key to answer freely. Paste one above — it stays in this browser only. Or ask me to take you to a specific topic and I'll navigate without an API.";
     addGuideMessage("bot", msg);
+    state.guideHistory.push({ role: "assistant", content: msg });
+    persistGuideHistory();
     speak(msg);
     return;
   }
@@ -4582,6 +5123,8 @@ async function sendGuide(text, opts = {}) {
     typingEl.remove();
     const errMsg = `the line went quiet. ${err.message || "unknown error"}`;
     addGuideMessage("bot", errMsg);
+    state.guideHistory.push({ role: "assistant", content: errMsg });
+    persistGuideHistory();
     speak(errMsg);
   }
 }
@@ -4783,7 +5326,7 @@ function setupSearch() {
     });
   }
   document.getElementById("generationCancel").addEventListener("click", () => {
-    state.generatingNow = false;
+    state.genToken++;   // invalidate every in-flight generation
     document.getElementById("generation-overlay").hidden = true;
   });
 }
@@ -4863,11 +5406,9 @@ function navigateToHit(hit) {
 async function generateAndAddEntity(query) {
   const token = ++state.genToken;   // drop stale results from rapid double-searches
   showGenerationOverlay(`Navigating to ${query}`, "Consulting The Librarian");
-  state.generatingNow = true;
   try {
     const result = await callClaudeForGeneration(query);
-    if (token !== state.genToken) { hideGenerationOverlay(); return; }
-    if (!state.generatingNow) return;
+    if (token !== state.genToken) return;   // cancelled or superseded
 
     if (result.parent) {
       // new moon under existing parent
@@ -4883,7 +5424,7 @@ async function generateAndAddEntity(query) {
             buildMoons(state.currentTopic);
             setTimeout(() => {
               const rec = state.moonMeshes.find(m => m.id === result.entity.id);
-              if (rec) { state.autoNarrateOnArrival = true; enterMoon(rec); }
+              if (rec) enterMoon(rec);
             }, 100);
           }, 200);
         } else {
@@ -4892,7 +5433,7 @@ async function generateAndAddEntity(query) {
             enterPlanet(result.parent);
             setTimeout(() => {
               const rec = state.moonMeshes.find(m => m.id === result.entity.id);
-              if (rec) { state.autoNarrateOnArrival = true; enterMoon(rec); }
+              if (rec) enterMoon(rec);
             }, 1500);
           }, state.mode === "galaxy" ? 0 : 700);
         }
@@ -4925,7 +5466,6 @@ async function generateAndAddEntity(query) {
       setTimeout(() => {
         hideGenerationOverlay();
         if (state.mode === "planet" || state.mode === "moon") returnToGalaxy();
-        state.autoNarrateOnArrival = true;  // narrate the new star on arrival
         setTimeout(() => enterPlanet(topic.id), state.mode === "galaxy" ? 100 : 800);
       }, 900);
     }
@@ -4933,10 +5473,8 @@ async function generateAndAddEntity(query) {
     // brief inline error before dismissing the overlay so user sees the failure
     showGenerationOverlay("generation failed", err.message?.slice(0, 100) || "unknown error");
     setTimeout(() => hideGenerationOverlay(), 2200);
-    addGuideMessage("bot", `Generation failed: *${escapeHtml(err.message?.slice(0,140) || "unknown")}*\n\nThe model may have produced malformed JSON. Try a slightly different phrasing, or open the guide and ask there.`);
+    addGuideMessage("bot", `Generation failed: *${err.message?.slice(0,140) || "unknown"}*\n\nThe model may have produced malformed JSON. Try a slightly different phrasing, or open the guide and ask there.`);
     openGuide();
-  } finally {
-    state.generatingNow = false;
   }
 }
 
@@ -5166,6 +5704,7 @@ async function callClaudeForGeneration(query) {
     throw new Error("AI returned malformed JSON");
   }
   if (!parsed.entity?.id || !parsed.entity?.name) throw new Error("AI returned incomplete entry");
+  sanitizeEntity(parsed.entity);
   if (parsed.parent && !topicById(parsed.parent)) parsed.parent = null;
   if (parsed.parent && !parsed.entity.orbit) {
     parsed.entity.orbit = {
@@ -5234,7 +5773,8 @@ function exitCollideMode() {
   state.collideMode = false;
   if (state.collideFirst) {
     const node = state.topicMeshes.get(state.collideFirst);
-    if (node) node.userData.corona?.scale.set(node.userData.size * 10, node.userData.size * 10, 1);
+    // only un-highlight if it isn't also part of a shift-select fusion set
+    if (node && !state.selectedStars.has(state.collideFirst)) node.userData.selected = false;
   }
   state.collideFirst = null;
   document.getElementById("btn-collide").classList.remove("active");
@@ -5316,12 +5856,13 @@ async function fireCollision(firstId, secondId) {
   const a = topicById(firstId), b = topicById(secondId);
   if (!a || !b) return;
 
-  // start launching projectile visually
+  // start launching projectile visually — parent to the (rotating) topic
+  // group so the path stays pinned to the stars' frame, not world space
   const start = new THREE.Vector3(...a.position);
   const end = new THREE.Vector3(...b.position);
   const mesh = makeProjectile();
   mesh.position.copy(start);
-  state.scene.add(mesh);
+  state.topicGroup.add(mesh);
 
   // promise that resolves on arrival
   let onArrive;
@@ -5335,7 +5876,8 @@ async function fireCollision(firstId, secondId) {
 
   // wait for projectile arrival
   await arrived;
-  state.scene.remove(mesh);
+  state.topicGroup.remove(mesh);
+  mesh.traverse(o => { if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
   spawnImpactFlash(end, a.color, b.color);
 
   // wait for synthesis to complete
@@ -5458,7 +6000,6 @@ function finalizeCollision(chosenName) {
     permanent: true,
     tags: exploreTags,
   });
-  state.autoNarrateOnArrival = true;
   setTimeout(() => enterPlanet(insight.id), 900);
 }
 
@@ -5511,14 +6052,14 @@ function spawnImpactFlash(pos, colorA, colorB) {
   const s = new THREE.Sprite(mat);
   s.position.copy(pos);
   s.scale.set(0.5, 0.5, 1);
-  state.scene.add(s);
+  state.topicGroup.add(s);   // same rotating frame as the stars
   let p = 0;
   const tick = () => {
     p += 0.035;
     s.scale.setScalar(0.5 + p * 22);
     s.material.opacity = Math.max(0, 1 - p);
     if (p < 1) requestAnimationFrame(tick);
-    else { state.scene.remove(s); s.material.dispose(); s.material.map.dispose(); }
+    else { state.topicGroup.remove(s); s.material.dispose(); s.material.map.dispose(); }
   };
   tick();
 }
@@ -5608,6 +6149,14 @@ function deleteEntry(entry) {
         const hi = state.hitTargets.indexOf(node.userData.hit);
         if (hi >= 0) state.hitTargets.splice(hi, 1);
       }
+      // free GPU resources (geometries, materials, sprite glow textures) —
+      // mirrors the moon branch above
+      node.traverse(o => {
+        try {
+          o.geometry?.dispose();
+          if (o.material) { o.material.map?.dispose(); o.material.dispose(); }
+        } catch (_) {}
+      });
     }
     removeStarLabel(entry.id);
     // remove edges referencing this id
@@ -5700,10 +6249,10 @@ async function regenerateEntry(entry) {
   if (!ok) return;
 
   showGenerationOverlay(`rebuilding ${entry.name}`, "Consulting The Librarian");
-  state.generatingNow = true;
+  const token = ++state.genToken;
   try {
     const updated = await callClaudeForRegen(entry);
-    if (!state.generatingNow) return;
+    if (token !== state.genToken) return;   // cancelled or superseded
     // merge non-visual fields (preserve id, position, size, planetTheme, color, cluster, parentId)
     Object.assign(entry, {
       summary:        updated.summary        ?? entry.summary,
@@ -5722,8 +6271,6 @@ async function regenerateEntry(entry) {
     hideGenerationOverlay();
     console.warn("[regenerate]", err);
     toast(`rebuild failed: ${err.message?.slice(0, 80) || "unknown"}`);
-  } finally {
-    state.generatingNow = false;
   }
 }
 
@@ -5861,17 +6408,16 @@ async function fireMultiFusion() {
   if (topics.length < 2) { clearStarSelection(); return; }
 
   showGenerationOverlay(`fusing ${topics.length} ideas`, "Consulting The Librarian");
-  state.generatingNow = true;
+  const token = ++state.genToken;
   try {
     const fusion = await generateFusion(topics);
+    if (token !== state.genToken) return;   // cancelled or superseded
     state.pendingFusion = { topics, fusion };
     hideGenerationOverlay();
     showTitleChooser(topics, fusion);
   } catch (err) {
     hideGenerationOverlay();
     toast(`fusion failed: ${err.message?.slice(0, 80) || "unknown"}`);
-  } finally {
-    state.generatingNow = false;
   }
 }
 
@@ -6034,7 +6580,6 @@ function finalizeFusion(chosenName) {
     tags: exploreTags,
   });
   // warp in shortly after — user can dismiss the insight to explore the new star directly
-  state.autoNarrateOnArrival = true;
   setTimeout(() => enterPlanet(newTopic.id), 1100);
 }
 
@@ -6125,12 +6670,39 @@ function persistMoon(moon) {
     localStorage.setItem("motu.userMoons", JSON.stringify(arr));
   } catch (e) { handleQuotaError(e); }
 }
+/* Default every field the renderer and boot path read unguarded, so a
+   partially-formed entity (model output or stale localStorage) can never
+   brick the app. Mutates and returns the entity. */
+function sanitizeEntity(e) {
+  if (!e || typeof e !== "object") return e;
+  if (!Array.isArray(e.documents)) e.documents = [];
+  e.documents = e.documents.filter(d => d && typeof d === "object");
+  for (const d of e.documents) {
+    if (!Array.isArray(d.findings)) d.findings = [];
+    if (!Array.isArray(d.prose)) d.prose = [];
+  }
+  if (!Array.isArray(e.tags)) e.tags = [];
+  if (!Array.isArray(e.conclusionBody)) e.conclusionBody = [];
+  if (e.card && typeof e.card !== "object") e.card = null;
+  if (typeof e.summary !== "string") e.summary = "";
+  if (typeof e.conclusion !== "string") e.conclusion = "";
+  return e;
+}
+
 function loadPersistedEntities() {
   try {
     const topics = JSON.parse(localStorage.getItem("motu.userTopics") || "[]");
-    for (const t of topics) registerGeneratedTopic(t);
+    for (const t of topics) {
+      if (!t?.id || !t?.name) continue;
+      try { registerGeneratedTopic(sanitizeEntity(t)); }
+      catch (err) { console.warn("[load] skipped malformed topic", t?.id, err); }
+    }
     const moons = JSON.parse(localStorage.getItem("motu.userMoons") || "[]");
-    for (const m of moons) registerGeneratedMoon(m);
+    for (const m of moons) {
+      if (!m?.id || !m?.name) continue;
+      try { registerGeneratedMoon(sanitizeEntity(m)); }
+      catch (err) { console.warn("[load] skipped malformed moon", m?.id, err); }
+    }
   } catch (e) { /* corrupted localStorage — non-fatal */ }
   loadPersistedEdges();
   loadOverrides();
@@ -6142,9 +6714,17 @@ async function callClaude(userText) {
     ? `The user is currently inside the "${state.currentTopic.name}" research environment. Topic conclusion: ${state.currentTopic.conclusion}`
     : "The user is in the galactic overview, looking at all topics at once.";
 
-  // last few turns
+  // last few turns — the API requires the history to start with a user
+  // message and roles to alternate, so trim and merge defensively
+  // (persisted histories from older versions may have unpaired turns).
   const turns = state.guideHistory.slice(-10).filter(m => m.role !== "system");
-  const messages = [...turns];
+  while (turns.length && turns[0].role !== "user") turns.shift();
+  const messages = [];
+  for (const m of turns) {
+    const last = messages[messages.length - 1];
+    if (last && last.role === m.role) last.content += "\n\n" + m.content;
+    else messages.push({ role: m.role, content: m.content });
+  }
 
   // Conversational chat uses Haiku — fast, cheap, and good enough for the
   // 2-5 sentence replies the Librarian prefers. Heavier tasks (topic

@@ -65,7 +65,7 @@ export const TOPICS = [
         findings: [
           "Current observations from the Pierre Auger Observatory and Telescope Array are consistent with continuous spacetime down to ~10^-27 m — about 8 orders of magnitude finer than electroweak scale.",
           "No preferred-axis anisotropy has been detected to the sensitivity of current arrays.",
-          "Next-generation arrays (POEMMA, GRAND) would push the limit by another 3–4 orders of magnitude before hitting the Planck scale.",
+          "Next-generation arrays (POEMMA, GRAND) would push the limit by another 3–4 orders of magnitude — still several orders short of the Planck length (~10^-35 m).",
         ],
         prose: [
           "If our universe is the output of a computation on a discrete lattice, that lattice has a spacing. Below the spacing, the simulation cannot resolve detail; above it, the lattice imposes preferred directions — the way pixels impose a grid on a digital image. The deep prediction is that cosmic rays of sufficient energy should reveal the grid: there should be subtle direction-dependent cutoffs in the spectrum, oriented along the lattice axes of the underlying simulation.",
@@ -739,7 +739,7 @@ export const TOPICS = [
         findings: [
           "The expansion will continue and accelerate.",
           "Galaxies outside the Local Group will recede beyond our cosmological horizon within ~150 billion years.",
-          "Stars will burn out over the next 10^14 years; degenerate remnants will dominate until proton decay (if it occurs, ~10^34 years).",
+          "Star formation will wind down and the last stars will burn out within ~10^14 years; degenerate remnants will dominate until proton decay (if it occurs, ~10^34 years).",
           "Black holes will dominate, then evaporate by Hawking radiation, on timescales up to 10^100 years.",
           "The final state — if the cosmological constant is truly constant — is essentially empty de Sitter space with thermal fluctuations.",
         ],
@@ -1242,6 +1242,7 @@ export const TOPICS = [
         "Why does the universe have such a low-entropy initial state — the precondition for the thermodynamic arrow?",
         "Are presentism (only the now is real) or eternalism (all moments equally real) defensible?",
       ]},
+      { type: "p", text: "Whether time flows or merely seems to is still an open question — physics sharply constrains the answer, but it does not yet deliver one. What relativity has settled is that whatever time is, it is not the universal river our intuition insists on." },
     ],
     planetTheme: { type: "mandala", params: { hue: 0.62, accent: 0.5, complexity: 12.0 } },
     documents: [
@@ -1474,6 +1475,7 @@ export const SUB_TOPICS = {
           "How supermassive black holes get to be supermassive so early — quasars at z > 7 imply growth mechanisms we don't fully understand.",
           "The information paradox — does information that falls into a black hole survive in subtle correlations in Hawking radiation, or is it lost? — has been the central problem of quantum gravity for fifty years.",
         ]},
+        { type: "p", text: "In one century black holes went from a mathematical embarrassment to an imaged, weighed, and routinely detected astrophysical population. The questions that remain are no longer about whether they exist, but about what their interiors and evaporation tell us about quantum gravity itself." },
       ],
       documents: [
         {
@@ -1542,6 +1544,7 @@ export const SUB_TOPICS = {
           "Zero-knowledge proofs, fully homomorphic encryption, and multi-party computation are theoretically achievable but practically expensive.",
           "Side-channel attacks, implementation flaws, and quantum side channels remain the actual source of most security failures.",
         ]},
+        { type: "p", text: "Cryptography's guarantees are conditional all the way down: every proof of security rests on an unproven hardness assumption, and most real-world breaks come from implementations rather than mathematics. The discipline works — but it works on credit." },
       ],
       documents: [
         {

@@ -48,7 +48,7 @@ Or any static server.
 
 ## AI Guide setup
 
-1. Click the **guide** chip (bottom-right) or press <kbd>?</kbd>.
+1. Click the **librarian** pill (bottom-right) or press <kbd>?</kbd>.
 2. Paste a Claude API key (starts with `sk-ant-`). It is stored only in your browser's `localStorage`.
 3. Ask anything. The guide knows the corpus and your current location.
 

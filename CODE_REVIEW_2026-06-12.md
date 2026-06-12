@@ -3,6 +3,8 @@
 
 Findings marked **✓ verified** were re-confirmed by direct inspection after the agent pass.
 
+> **Status (2026-06-12):** All 31 findings fixed in the same-day follow-up commit. Notes on the judgment calls: H5 was resolved by **restoring the browser-voice fallback** (not deleting the UI) — narration now works without an ElevenLabs key, and an explicit browser-voice choice is honored; L7's dead flag was removed without changing narration behavior; L13 was harmonized as "era ends ~10^14 yr / smallest red dwarfs ~10^13 yr" (both correct); M7 moves the mobile chip row below the search bar, wrapping.
+
 ---
 
 ## High severity

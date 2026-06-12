@@ -54,7 +54,7 @@ Inside the document modal, each document now ends with prev / next buttons so yo
 `?keys` chip opens a modal with every keyboard / interaction shortcut. The most distinctive features (multi-star fusion via shift-click) now have explicit discoverability.
 
 ### Skippable boot
-Any click or keypress after a 600ms grace period dismisses the chakra boot animation. Power users on repeat visits don't have to wait.
+The first click begins the (initially paused) boot experience and unlocks audio; any click or keypress after a 600ms grace period then dismisses the chakra animation early. Power users on repeat visits don't have to wait.
 
 ### Rebuild this entry
 Every planet has a `rebuild this entry` menu button. Calls Opus with web search + Semantic Scholar grounding to regenerate the topic with current schema (real source citations, index card, full documents). Persists per-topic in localStorage as an override.

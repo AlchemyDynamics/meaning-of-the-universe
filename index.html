@@ -100,7 +100,10 @@
       <p class="boot-sub">A 3D library of cutting-edge inquiry</p>
       <p class="boot-status" id="bootStatus"></p>
     </div>
-    <div class="boot-begin-overlay" id="bootBeginOverlay"></div>
+    <div class="boot-begin-overlay" id="bootBeginOverlay">
+      <div class="boot-begin-prompt">click anywhere to begin</div>
+      <div class="boot-begin-hint">sound on · headphones recommended</div>
+    </div>
   </div>
 
   <!-- Three.js canvas mount -->
@@ -236,6 +239,11 @@
           <span class="menu-label">connections</span>
           <span class="menu-sub" id="planetConnCount">— links</span>
         </button>
+        <button class="menu-btn" data-action="surface">
+          <span class="menu-icon">◉</span>
+          <span class="menu-label">descend to surface</span>
+          <span class="menu-sub">generate an explorable world</span>
+        </button>
         <button class="menu-btn" data-action="ask-guide">
           <span class="menu-icon">✦</span>
           <span class="menu-label">ask The Librarian</span>
@@ -305,7 +313,7 @@
       </div>
       <div class="modal-body">
         <p class="conn-intro">
-          Enter the world of <strong id="surfaceConfirmName">—</strong>. The environment is built from this entry's themes.
+          Enter the world of <strong id="surfaceConfirmName">—</strong>. A procedural surface appears immediately; from there you can create a World Labs Marble world using a thematic seed image.
         </p>
         <div class="conn-review-actions">
           <button id="surfaceDecline" class="setting-btn ghost">stay in orbit</button>
@@ -325,6 +333,23 @@
       <div class="surface-eyebrow" id="surfaceOverlayCluster">surface · cluster</div>
       <h2 class="surface-title" id="surfaceOverlayTitle">Topic</h2>
       <p class="surface-summary" id="surfaceOverlaySummary"></p>
+    </div>
+    <aside class="surface-world-dock" id="surfaceWorldDock">
+      <div class="surface-world-head">
+        <span class="surface-world-eyebrow">world model</span>
+        <span class="surface-world-status" id="surfaceWorldStatus">procedural surface</span>
+      </div>
+      <img id="surfaceSeedPreview" class="surface-seed-preview" alt="World seed preview" hidden />
+      <p class="surface-world-caption" id="surfaceWorldCaption"></p>
+      <div class="surface-world-actions">
+        <button class="surface-world-btn primary" id="surfaceGenerateWorld">generate world</button>
+        <button class="surface-world-btn" id="surfaceOpenWorld" hidden>open viewer</button>
+        <button class="surface-world-btn" id="surfaceShowSeed">seed</button>
+      </div>
+    </aside>
+    <div class="surface-world-frame-wrap" id="surfaceWorldFrameWrap" hidden>
+      <button class="surface-frame-close" id="surfaceCloseViewer">close viewer</button>
+      <iframe id="surfaceWorldFrame" class="surface-world-frame" title="Generated World Labs Marble world" allow="fullscreen; xr-spatial-tracking"></iframe>
     </div>
   </div>
 
@@ -412,6 +437,27 @@
                 <label class="el-model-opt"><input type="radio" name="elModel" value="eleven_multilingual_v2" /><span>Multilingual v2</span><em>highest quality</em></label>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="setting-row wl-row">
+          <label class="setting-label" for="wlKey">world labs platform
+            <span class="setting-value" id="wlStatus">not connected</span>
+          </label>
+          <input id="wlKey" class="guide-key" type="password" placeholder="WLT API key… (stored locally)" autocomplete="off" spellcheck="false" />
+          <div class="setting-hint">Used only when you click generate world on a surface.</div>
+          <div style="margin-top:12px;">
+            <div class="setting-label" style="font-size:9px;margin-bottom:6px;">marble model</div>
+            <select id="wlModel" class="setting-select">
+              <option value="marble-1.1">Marble 1.1</option>
+              <option value="marble-1.1-plus">Marble 1.1 Plus</option>
+              <option value="marble-1.0">Marble 1.0</option>
+              <option value="marble-1.0-draft">Marble 1.0 Draft</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="setting-btn" id="wlKeySave">save World Labs key</button>
+            <button class="setting-btn ghost" id="wlDisconnect">disconnect</button>
           </div>
         </div>
 
@@ -604,8 +650,8 @@
           <svg viewBox="0 0 24 24" width="11" height="11"><path d="M6 6v12M19 5l-9 7 9 7z" fill="currentColor"/></svg>
         </button>
         <button class="music-btn-icon music-play" id="musicPlay" title="Play / Pause">
-          <svg class="music-icon-play"  viewBox="0 0 24 24" width="12" height="12" hidden><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
-          <svg class="music-icon-pause" viewBox="0 0 24 24" width="12" height="12"><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>
+          <svg class="music-icon-play"  viewBox="0 0 24 24" width="12" height="12"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+          <svg class="music-icon-pause" viewBox="0 0 24 24" width="12" height="12" hidden><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>
         </button>
         <button class="music-btn-icon" id="musicNext" title="Next track">
           <svg viewBox="0 0 24 24" width="11" height="11"><path d="M18 6v12M5 5l9 7-9 7z" fill="currentColor"/></svg>
