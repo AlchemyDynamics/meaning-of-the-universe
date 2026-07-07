@@ -1118,12 +1118,15 @@ function buildPlanet() {
 
 function setPlanetTheme(topic) {
   const u = state.planetMesh.material.uniforms;
-  const t = topic.planetTheme;
+  // Guard like buildSurfaceScene/buildMoons do — a persisted or model-generated
+  // entry can arrive without planetTheme or params, and must not brick enterPlanet.
+  const t = topic.planetTheme || { type: "crystal", params: {} };
+  const p = t.params || {};
   u.uTheme.value = THEME_INDEX[t.type] ?? 0;
-  u.uHue.value = t.params.hue ?? 0.7;
-  u.uAccent.value = t.params.accent ?? 0.95;
+  u.uHue.value = p.hue ?? 0.7;
+  u.uAccent.value = p.accent ?? 0.95;
   // theme-specific param
-  u.uParamA.value = t.params.bands ?? t.params.complexity ?? t.params.density ?? t.params.facets ?? t.params.turbulence ?? t.params.glitch ?? t.params.structure ?? 6.0;
+  u.uParamA.value = p.bands ?? p.complexity ?? p.density ?? p.facets ?? p.turbulence ?? p.glitch ?? p.structure ?? 6.0;
   state.planetHalo.material.uniforms.uColor.value.set(topic.color);
 }
 
@@ -5874,7 +5877,7 @@ async function fireCollision(firstId, secondId) {
   // wait for projectile arrival
   await arrived;
   state.topicGroup.remove(mesh);
-  mesh.traverse(o => { if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
+  mesh.traverse(o => { o.geometry?.dispose(); if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
   spawnImpactFlash(end, a.color, b.color);
 
   // wait for synthesis to complete
@@ -6409,6 +6412,9 @@ async function fireMultiFusion() {
   try {
     const fusion = await generateFusion(topics);
     if (token !== state.genToken) return;   // cancelled or superseded
+    // A collision chooser dismissed via ✕ leaves pendingCollision set;
+    // clear it so commitTitleChoice routes to finalizeFusion, not the stale collision.
+    state.pendingCollision = null;
     state.pendingFusion = { topics, fusion };
     hideGenerationOverlay();
     showTitleChooser(topics, fusion);
@@ -6748,5 +6754,9 @@ async function callClaude(userText) {
     throw new Error(`API ${resp.status}: ${txt.slice(0, 200)}`);
   }
   const data = await resp.json();
-  return (data.content || []).map(b => b.text).join("\n\n").trim();
+  return (data.content || [])
+    .filter(b => b.type === "text" && typeof b.text === "string")
+    .map(b => b.text)
+    .join("\n\n")
+    .trim();
 }
